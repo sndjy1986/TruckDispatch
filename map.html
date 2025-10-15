@@ -7,6 +7,54 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f9f9f9;
+    }
+    .map-container {
+      padding: 15px;
+    }
+    .map-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .map-box {
+      height: 500px;
+      width: 100%;
+      margin-top: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+    .recommendation {
+      margin-top: 15px;
+      background: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
+    .truck-list {
+      margin-top: 15px;
+      background: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
+    .truck-list table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .truck-list th, .truck-list td {
+      border-bottom: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    .truck-list th {
+      background: #f2f2f2;
+    }
+  </style>
 </head>
 <body>
 
@@ -22,25 +70,38 @@
       <h3>Closest Truck Suggestion:</h3>
       <p id="closestUnit">Loading...</p>
     </div>
+
+    <div class="truck-list">
+      <h3>All Trucks and Distances:</h3>
+      <table id="truckTable">
+        <thead>
+          <tr>
+            <th>Truck</th>
+            <th>Status</th>
+            <th>Distance (mi)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <script>
-    // Get address from URL parameters
     const params = new URLSearchParams(window.location.search);
     const address = params.get("address");
 
-    // Google Sheet JSON endpoint
     const sheetURL = "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
 
-    // Initialize Leaflet map
     const map = L.map("map").setView([34.5, -82.65], 10);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-    }).addTo(map);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
 
-    // Geocode the address entered
+    // Geocode the call address
     async function getCallLocation() {
-      const geocodeAPI = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(address + ', South Carolina, USA')}`;
+      let query = address;
+      if (!/south carolina|sc/i.test(address)) {
+        query += ", South Carolina, USA";
+      }
+      const geocodeAPI = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}`;
       const response = await fetch(geocodeAPI);
       const data = await response.json();
       if (data.length > 0) {
@@ -59,18 +120,17 @@
     async function getTruckData() {
       const res = await fetch(sheetURL);
       const text = await res.text();
-      const json = JSON.parse(text.substr(47).slice(0, -2)); // Clean JSON
+      const json = JSON.parse(text.substr(47).slice(0, -2));
       const rows = json.table.rows;
       const trucks = rows.map(r => ({
         name: r.c[0]?.v,
         status: r.c[1]?.v,
         lat: parseFloat(r.c[2]?.v),
-        lon: parseFloat(r.c[3]?.v),
+        lon: parseFloat(r.c[3]?.v)
       }));
       return trucks.filter(t => !isNaN(t.lat) && !isNaN(t.lon));
     }
 
-    // Get map color for each status
     function getColor(status) {
       switch (status?.toLowerCase()) {
         case "available": return "green";
@@ -83,9 +143,8 @@
       }
     }
 
-    // Calculate distance in MILES using Haversine formula
     function distance(lat1, lon1, lat2, lon2) {
-      const R = 3958.8; // Earth radius in miles
+      const R = 3958.8; // miles
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLon = (lon2 - lon1) * Math.PI / 180;
       const a = Math.sin(dLat / 2) ** 2 +
@@ -96,52 +155,62 @@
       return R * c;
     }
 
-    // Initialize everything
     async function init() {
       const callLoc = await getCallLocation();
       const trucks = await getTruckData();
 
       let closest = null;
       let minDist = Infinity;
+      const truckDistances = [];
 
-      // 🚚 The Truck Loop
       trucks.forEach(t => {
-        // Skip if invalid coordinates
         if (isNaN(t.lat) || isNaN(t.lon)) return;
 
-        // Calculate distance from call
-        const d = callLoc ? distance(callLoc.lat, callLoc.lon, t.lat, t.lon) : 0;
-
-        // Debug output in browser console
+        const d = callLoc ? distance(callLoc.lat, callLoc.lon, t.lat, t.lon) : Infinity;
         console.log(`${t.name} | ${t.status} | ${d.toFixed(2)} miles away`);
 
-        // Draw the truck marker
+        // Plot the truck
         const icon = L.circleMarker([t.lat, t.lon], {
           color: getColor(t.status),
           radius: 8,
           fillOpacity: 1
         }).addTo(map);
-
         icon.bindPopup(`${t.name} - ${t.status}`);
 
-        // Determine closest available unit
+        // Save distance for table
+        truckDistances.push({ ...t, distance: d });
+
+        // Find closest available
         if (t.status && t.status.toLowerCase() === "available" && d < minDist) {
           minDist = d;
           closest = t;
         }
       });
 
-      // Display the closest truck info
+      // Sort trucks by distance
+      truckDistances.sort((a, b) => a.distance - b.distance);
+
+      // Update closest unit text
       if (closest) {
         document.getElementById("closestUnit").innerText =
           `${closest.name} (${minDist.toFixed(2)} miles away)`;
       } else {
-        document.getElementById("closestUnit").innerText =
-          "No available units found.";
+        document.getElementById("closestUnit").innerText = "No available units found.";
       }
+
+      // Populate truck table
+      const tbody = document.querySelector("#truckTable tbody");
+      truckDistances.forEach(t => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${t.name}</td>
+          <td>${t.status}</td>
+          <td>${t.distance === Infinity ? "N/A" : t.distance.toFixed(2)}</td>
+        `;
+        tbody.appendChild(row);
+      });
     }
 
-    // Start it all
     init();
   </script>
 </body>
