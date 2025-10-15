@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dispatch Application - Interactive Map</title>
+  <title>Dispatch Application - Map View</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <style>
@@ -15,6 +15,11 @@
     .map-container {
       padding: 15px;
     }
+    .map-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
     .map-box {
       height: 500px;
       width: 100%;
@@ -22,79 +27,59 @@
       border-radius: 8px;
       border: 1px solid #ccc;
     }
-    .truck-list, .recommendation {
+    .recommendation {
       margin-top: 15px;
       background: #fff;
-      padding: 10px;
+      padding: 15px;
       border-radius: 8px;
       box-shadow: 0 0 5px rgba(0,0,0,0.1);
     }
-    .truck-list table {
-      width: 100%;
-      border-collapse: collapse;
+    .dispatch-controls {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
     }
-    .truck-list th, .truck-list td {
-      border-bottom: 1px solid #ddd;
-      padding: 8px;
-      text-align: left;
-    }
-    .truck-list th {
-      background: #f2f2f2;
-    }
-    .status-menu {
-      position: absolute;
-      background: white;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.2);
-      display: none;
-      z-index: 1000;
-    }
-    .status-menu button {
-      display: block;
-      width: 100%;
-      border: none;
-      background: none;
-      padding: 8px 12px;
-      text-align: left;
+    select, button {
+      font-size: 1rem;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #aaa;
       cursor: pointer;
     }
-    .status-menu button:hover {
-      background: #eee;
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+    }
+    button:hover {
+      background-color: #0056b3;
     }
   </style>
 </head>
 <body>
+
   <div class="map-container">
-    <h2>Map View / Unit Recommendation</h2>
+    <div class="map-header">
+      <h2>Map View / Dispatch Screen</h2>
+      <button onclick="window.location.href='index.html'">⬅ Back</button>
+    </div>
+
     <div id="map" class="map-box"></div>
 
     <div class="recommendation">
-      <h3>Closest Truck Suggestion:</h3>
-      <p id="closestUnit">Loading...</p>
-    </div>
+      <h3>Closest Truck Recommendation</h3>
+      <p id="closestTruck">Loading...</p>
 
-    <div class="truck-list">
-      <h3>All Trucks and Distances:</h3>
-      <table id="truckTable">
-        <thead>
-          <tr>
-            <th>Truck</th>
-            <th>Status</th>
-            <th>Distance (mi)</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
+      <div class="dispatch-controls">
+        <button id="dispatchBtn">🚒 Dispatch</button>
+      </div>
 
-    <div class="status-menu" id="statusMenu">
-      <button data-status="Available">Available</button>
-      <button data-status="En Route">En Route</button>
-      <button data-status="On Scene">On Scene</button>
-      <button data-status="Destination">Destination</button>
-      <button data-status="Logistics">Logistics</button>
-      <button data-status="Out of Service">Out of Service</button>
+      <div class="dispatch-controls">
+        <label for="sendInstead"><strong>Send Instead:</strong></label>
+        <select id="sendInstead"></select>
+        <button id="dispatchAltBtn">Dispatch Instead</button>
+      </div>
     </div>
   </div>
 
@@ -102,11 +87,13 @@
     const params = new URLSearchParams(window.location.search);
     const address = params.get("address");
     const sheetURL = "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
+
     const map = L.map("map").setView([34.5, -82.65], 10);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
 
     let trucks = [];
     let markers = {};
+    let closest = null;
 
     function getColor(status) {
       switch (status?.toLowerCase()) {
@@ -170,67 +157,58 @@
         distance: callLoc ? distance(callLoc.lat, callLoc.lon, t.lat, t.lon) : Infinity
       }));
 
-      let closest = truckDistances.filter(t => t.status?.toLowerCase() === "available")
-                                  .sort((a, b) => a.distance - b.distance)[0];
+      // Find closest truck
+      closest = truckDistances.filter(t => t.status?.toLowerCase() === "available")
+                              .sort((a, b) => a.distance - b.distance)[0];
 
-      if (closest)
-        document.getElementById("closestUnit").innerText = `${closest.name} (${closest.distance.toFixed(2)} mi)`;
-      else
-        document.getElementById("closestUnit").innerText = "No available units found.";
-
-      const tbody = document.querySelector("#truckTable tbody");
-      tbody.innerHTML = "";
-      truckDistances.sort((a, b) => a.distance - b.distance).forEach(t => {
-        const row = document.createElement("tr");
-        row.innerHTML = `<td>${t.name}</td><td>${t.status}</td><td>${t.distance.toFixed(2)}</td>`;
-        row.addEventListener("click", e => showStatusMenu(e, t.name));
-        tbody.appendChild(row);
-
+      // Populate map markers
+      truckDistances.forEach(t => {
         const marker = L.circleMarker([t.lat, t.lon], {
           color: getColor(t.status),
           radius: 8,
           fillOpacity: 1
         }).addTo(map);
         marker.bindPopup(`${t.name} - ${t.status}`);
-        marker.on("click", e => showStatusMenu(e.originalEvent, t.name));
         markers[t.name] = marker;
       });
+
+      // Populate dropdown for all other trucks
+      const dropdown = document.getElementById("sendInstead");
+      truckDistances
+        .filter(t => t.name !== closest?.name)
+        .forEach(t => {
+          const opt = document.createElement("option");
+          opt.value = t.name;
+          opt.text = `${t.name} (${t.distance.toFixed(2)} mi)`;
+          dropdown.appendChild(opt);
+        });
+
+      // Display closest truck
+      if (closest)
+        document.getElementById("closestTruck").innerText =
+          `${closest.name} (${closest.distance.toFixed(2)} miles away)`;
+      else
+        document.getElementById("closestTruck").innerText = "No available units found.";
     }
 
-    const menu = document.getElementById("statusMenu");
-    function showStatusMenu(e, truckName) {
-      e.preventDefault();
-      menu.style.display = "block";
-      menu.style.left = e.pageX + "px";
-      menu.style.top = e.pageY + "px";
-      menu.dataset.truck = truckName;
-    }
-
-    document.addEventListener("click", e => {
-      if (!menu.contains(e.target)) menu.style.display = "none";
+    // Handle dispatch buttons
+    document.getElementById("dispatchBtn").addEventListener("click", () => {
+      if (!closest) return alert("No available truck to dispatch.");
+      dispatchTruck(closest.name);
     });
 
-    menu.querySelectorAll("button").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const name = menu.dataset.truck;
-        const status = btn.dataset.status;
-        const truck = trucks.find(t => t.name === name);
-        if (truck) {
-          truck.status = status;
-          markers[name].setStyle({ color: getColor(status) });
-          updateTable();
-          menu.style.display = "none";
-        }
-      });
+    document.getElementById("dispatchAltBtn").addEventListener("click", () => {
+      const altTruck = document.getElementById("sendInstead").value;
+      if (!altTruck) return alert("Select a truck first.");
+      dispatchTruck(altTruck);
     });
 
-    function updateTable() {
-      const tbody = document.querySelector("#truckTable tbody");
-      tbody.querySelectorAll("tr").forEach(tr => {
-        const name = tr.children[0].innerText;
-        const truck = trucks.find(t => t.name === name);
-        tr.children[1].innerText = truck.status;
-      });
+    function dispatchTruck(name) {
+      const truck = trucks.find(t => t.name === name);
+      if (!truck) return alert("Truck not found.");
+      truck.status = "En Route";
+      markers[name].setStyle({ color: getColor("En Route") });
+      alert(`${name} dispatched to call.`);
     }
 
     init();
