@@ -15,11 +15,6 @@
     .map-container {
       padding: 15px;
     }
-    .map-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
     .map-box {
       height: 500px;
       width: 100%;
@@ -34,12 +29,6 @@
       border-radius: 8px;
       box-shadow: 0 0 5px rgba(0,0,0,0.1);
     }
-    .dispatch-controls {
-      margin-top: 10px;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
     select, button {
       font-size: 1rem;
       padding: 6px 10px;
@@ -51,6 +40,7 @@
       background-color: #007bff;
       color: white;
       border: none;
+      margin-left: 5px;
     }
     button:hover {
       background-color: #0056b3;
@@ -60,10 +50,8 @@
 <body>
 
   <div class="map-container">
-    <div class="map-header">
-      <h2>Map View / Dispatch Screen</h2>
-      <button onclick="window.location.href='index.html'">⬅ Back</button>
-    </div>
+    <h2>Map View / Dispatch Screen</h2>
+    <button onclick="window.location.href='index.html'">⬅ Back</button>
 
     <div id="map" class="map-box"></div>
 
@@ -71,11 +59,13 @@
       <h3>Closest Truck Recommendation</h3>
       <p id="closestTruck">Loading...</p>
 
-      <div class="dispatch-controls">
+      <div>
         <button id="dispatchBtn">🚒 Dispatch</button>
       </div>
 
-      <div class="dispatch-controls">
+      <hr>
+
+      <div>
         <label for="sendInstead"><strong>Send Instead:</strong></label>
         <select id="sendInstead"></select>
         <button id="dispatchAltBtn">Dispatch Instead</button>
@@ -161,7 +151,7 @@
       closest = truckDistances.filter(t => t.status?.toLowerCase() === "available")
                               .sort((a, b) => a.distance - b.distance)[0];
 
-      // Populate map markers
+      // Add markers
       truckDistances.forEach(t => {
         const marker = L.circleMarker([t.lat, t.lon], {
           color: getColor(t.status),
@@ -172,7 +162,7 @@
         markers[t.name] = marker;
       });
 
-      // Populate dropdown for all other trucks
+      // Fill dropdown
       const dropdown = document.getElementById("sendInstead");
       truckDistances
         .filter(t => t.name !== closest?.name)
@@ -183,7 +173,7 @@
           dropdown.appendChild(opt);
         });
 
-      // Display closest truck
+      // Display closest
       if (closest)
         document.getElementById("closestTruck").innerText =
           `${closest.name} (${closest.distance.toFixed(2)} miles away)`;
@@ -191,7 +181,6 @@
         document.getElementById("closestTruck").innerText = "No available units found.";
     }
 
-    // Handle dispatch buttons
     document.getElementById("dispatchBtn").addEventListener("click", () => {
       if (!closest) return alert("No available truck to dispatch.");
       dispatchTruck(closest.name);
@@ -208,7 +197,18 @@
       if (!truck) return alert("Truck not found.");
       truck.status = "En Route";
       markers[name].setStyle({ color: getColor("En Route") });
-      alert(`${name} dispatched to call.`);
+
+      // Save to localStorage
+      const activeCall = {
+        address: address,
+        truck: truck.name,
+        status: "En Route",
+        time: new Date().toLocaleTimeString()
+      };
+      localStorage.setItem("activeCall", JSON.stringify(activeCall));
+
+      // Redirect to active call screen
+      window.location.href = "active.html";
     }
 
     init();
