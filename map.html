@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dispatch Application - Map View</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
 <body>
 
@@ -14,20 +16,105 @@
       <button onclick="window.location.href='index.html'">⬅ Back</button>
     </div>
 
-    <div class="map-box">
-      <p>📍 Map area will display call location and available units.</p>
-    </div>
+    <div id="map" class="map-box"></div>
 
     <div class="recommendation">
       <h3>Closest Truck Suggestion:</h3>
-      <p id="closestUnit">Calculating...</p>
+      <p id="closestUnit">Loading...</p>
     </div>
   </div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
     const address = params.get("address");
-    document.getElementById("closestUnit").innerText = "Address: " + decodeURIComponent(address);
+    const geocodeAPI = `https://nominatim.openstreetmap.org/search?format=json&q=${address}`;
+    const sheetURL = "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
+
+    const map = L.map("map").setView([35.22, -97.44], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+    }).addTo(map);
+
+    async function getCallLocation() {
+      const response = await fetch(geocodeAPI);
+      const data = await response.json();
+      if (data.length > 0) {
+        const { lat, lon } = data[0];
+        const callMarker = L.marker([lat, lon]).addTo(map);
+        callMarker.bindPopup("Call Location").openPopup();
+        map.setView([lat, lon], 12);
+        return { lat: parseFloat(lat), lon: parseFloat(lon) };
+      }
+    }
+
+    async function getTruckData() {
+      const res = await fetch(sheetURL);
+      const text = await res.text();
+      const json = JSON.parse(text.substr(47).slice(0, -2)); // clean up the Google Sheets JSON
+      const rows = json.table.rows;
+      const trucks = rows.map(r => ({
+        name: r.c[0]?.v,
+        status: r.c[1]?.v,
+        lat: parseFloat(r.c[2]?.v),
+        lon: parseFloat(r.c[3]?.v),
+      }));
+      return trucks.filter(t => !isNaN(t.lat) && !isNaN(t.lon));
+    }
+
+    function getColor(status) {
+      switch (status) {
+        case "Available": return "green";
+        case "En Route": return "blue";
+        case "On Scene": return "orange";
+        case "Destination": return "purple";
+        case "Logistics": return "yellow";
+        case "Out of Service": return "gray";
+        default: return "black";
+      }
+    }
+
+    function distance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) *
+                Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    async function init() {
+      const callLoc = await getCallLocation();
+      const trucks = await getTruckData();
+
+      let closest = null, minDist = Infinity;
+
+      trucks.forEach(t => {
+        const icon = L.circleMarker([t.lat, t.lon], {
+          color: getColor(t.status),
+          radius: 8,
+          fillOpacity: 1
+        }).addTo(map);
+        icon.bindPopup(`${t.name} - ${t.status}`);
+
+        if (callLoc) {
+          const d = distance(callLoc.lat, callLoc.lon, t.lat, t.lon);
+          if (t.status === "Available" && d < minDist) {
+            minDist = d;
+            closest = t;
+          }
+        }
+      });
+
+      if (closest) {
+        document.getElementById("closestUnit").innerText =
+          `${closest.name} (${minDist.toFixed(2)} km away)`;
+      } else {
+        document.getElementById("closestUnit").innerText = "No available units found.";
+      }
+    }
+
+    init();
   </script>
 
 </body>
