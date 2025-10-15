@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dispatch Application - Map View</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="map-container">
+    <div class="map-header">
+      <h2>Map View / Unit Recommendation</h2>
+      <button onclick="window.location.href='index.html'">⬅ Back</button>
+    </div>
+
+    <div class="map-box">
+      <p>📍 Map area will display call location and available units.</p>
+    </div>
+
+    <div class="recommendation">
+      <h3>Closest Truck Suggestion:</h3>
+      <p id="closestUnit">Calculating...</p>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const address = params.get("address");
+    document.getElementById("closestUnit").innerText = "Address: " + decodeURIComponent(address);
+  </script>
+
+</body>
+</html>
