@@ -1,217 +1,185 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dispatch Application - Map View</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      background: #f9f9f9;
-    }
-    .map-container {
-      padding: 15px;
-    }
-    .map-box {
-      height: 500px;
-      width: 100%;
-      margin-top: 10px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-    }
-    .recommendation {
-      margin-top: 15px;
-      background: #fff;
-      padding: 15px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.1);
-    }
-    select, button {
-      font-size: 1rem;
-      padding: 6px 10px;
-      border-radius: 6px;
-      border: 1px solid #aaa;
-      cursor: pointer;
-    }
-    button {
-      background-color: #007bff;
-      color: white;
-      border: none;
-      margin-left: 5px;
-    }
-    button:hover {
-      background-color: #0056b3;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dispatch Map</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f0f2f5;
+    margin: 0;
+    padding: 20px;
+  }
+  h1 { text-align: center; color: #004c99; }
+  #map {
+    width: 100%;
+    height: 400px;
+    border-radius: 10px;
+    margin-top: 10px;
+  }
+  .dispatch-panel {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    margin-top: 20px;
+  }
+  .dispatch-panel h2, .dispatch-panel h3 { margin-top: 0; }
+  button {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    margin-top: 5px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  button:hover { background: #0056b3; }
+  select {
+    padding: 8px;
+    margin-left: 10px;
+  }
+</style>
 </head>
 <body>
 
-  <div class="map-container">
-    <h2>Map View / Dispatch Screen</h2>
-    <button onclick="window.location.href='index.html'">⬅ Back</button>
+<h1>Dispatch Map</h1>
+<div id="map"></div>
 
-    <div id="map" class="map-box"></div>
+<div class="dispatch-panel">
+  <h2>Closest Unit</h2>
+  <div id="closestTruck">Loading...</div>
+  <button id="dispatchBtn">Dispatch Closest Truck</button>
 
-    <div class="recommendation">
-      <h3>Closest Truck Recommendation</h3>
-      <p id="closestTruck">Loading...</p>
+  <h3>Or Send Another Unit</h3>
+  <select id="alternateSelect"></select>
+  <button id="sendAlternateBtn">Dispatch Selected Unit</button>
+</div>
 
-      <div>
-        <button id="dispatchBtn">🚒 Dispatch</button>
-      </div>
+<script>
+  const SHEET_ID = "1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0";
+  const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
 
-      <hr>
+  const params = new URLSearchParams(window.location.search);
+  const address = params.get("address");
 
-      <div>
-        <label for="sendInstead"><strong>Send Instead:</strong></label>
-        <select id="sendInstead"></select>
-        <button id="dispatchAltBtn">Dispatch Instead</button>
-      </div>
-    </div>
-  </div>
+  let trucks = [];
+  let closest = null;
+  let map, callLoc;
 
-  <script>
-    const params = new URLSearchParams(window.location.search);
-    const address = params.get("address");
-    const sheetURL = "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
+  function initMap() {
+    map = new google.maps.Map(document.getElementById("map"), {
+      center: { lat: 34.5212, lng: -82.6484 },
+      zoom: 10
+    });
 
-    const map = L.map("map").setView([34.5, -82.65], 10);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
-
-    let trucks = [];
-    let markers = {};
-    let closest = null;
-
-    function getColor(status) {
-      switch (status?.toLowerCase()) {
-        case "available": return "green";
-        case "en route": return "blue";
-        case "on scene": return "orange";
-        case "destination": return "purple";
-        case "logistics": return "yellow";
-        case "out of service": return "gray";
-        default: return "black";
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ address: address + ", SC" }, (results, status) => {
+      if (status === "OK") {
+        callLoc = results[0].geometry.location;
+        new google.maps.Marker({
+          map,
+          position: callLoc,
+          label: "📍",
+          title: address
+        });
+        map.setCenter(callLoc);
+        loadTrucks();
+      } else {
+        alert("Could not find location: " + status);
       }
-    }
+    });
+  }
 
-    function distance(lat1, lon1, lat2, lon2) {
-      const R = 3958.8;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2 +
-                Math.cos(lat1 * Math.PI / 180) *
-                Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLon / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
-
-    async function getCallLocation() {
-      let query = address;
-      if (!/south carolina|sc/i.test(address)) query += ", South Carolina, USA";
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      if (data.length > 0) {
-        const { lat, lon } = data[0];
-        const callMarker = L.marker([lat, lon]).addTo(map);
-        callMarker.bindPopup("📍 Call Location").openPopup();
-        map.setView([lat, lon], 12);
-        return { lat: parseFloat(lat), lon: parseFloat(lon) };
-      }
-      return null;
-    }
-
-    async function getTruckData() {
-      const res = await fetch(sheetURL);
+  async function loadTrucks() {
+    try {
+      const res = await fetch(API_URL);
       const text = await res.text();
       const json = JSON.parse(text.substr(47).slice(0, -2));
       const rows = json.table.rows;
-      const list = rows.map(r => ({
-        name: r.c[0]?.v,
+
+      trucks = rows.map(r => ({
+        truck: r.c[0]?.v,
         status: r.c[1]?.v,
         lat: parseFloat((r.c[2]?.v || "").toString().replace(/[–—]/g, "-")),
         lon: parseFloat((r.c[3]?.v || "").toString().replace(/[–—]/g, "-")),
-      }));
-      return list.filter(t => !isNaN(t.lat) && !isNaN(t.lon));
+      })).filter(t => t.status === "Available" && !isNaN(t.lat) && !isNaN(t.lon));
+
+      findClosestTruck();
+    } catch (err) {
+      alert("Error loading trucks: " + err);
     }
+  }
 
-    async function init() {
-      const callLoc = await getCallLocation();
-      trucks = await getTruckData();
+  function findClosestTruck() {
+    const distances = trucks.map(t => ({
+      ...t,
+      distance: haversine(callLoc.lat(), callLoc.lng(), t.lat, t.lon)
+    }));
+    distances.sort((a, b) => a.distance - b.distance);
 
-      const truckDistances = trucks.map(t => ({
-        ...t,
-        distance: callLoc ? distance(callLoc.lat, callLoc.lon, t.lat, t.lon) : Infinity
-      }));
+    closest = distances[0];
+    const dropdown = document.getElementById("alternateSelect");
+    dropdown.innerHTML = "";
 
-      // Find closest truck
-      closest = truckDistances.filter(t => t.status?.toLowerCase() === "available")
-                              .sort((a, b) => a.distance - b.distance)[0];
-
-      // Add markers
-      truckDistances.forEach(t => {
-        const marker = L.circleMarker([t.lat, t.lon], {
-          color: getColor(t.status),
-          radius: 8,
-          fillOpacity: 1
-        }).addTo(map);
-        marker.bindPopup(`${t.name} - ${t.status}`);
-        markers[t.name] = marker;
-      });
-
-      // Fill dropdown
-      const dropdown = document.getElementById("sendInstead");
-      truckDistances
-        .filter(t => t.name !== closest?.name)
-        .forEach(t => {
-          const opt = document.createElement("option");
-          opt.value = t.name;
-          opt.text = `${t.name} (${t.distance.toFixed(2)} mi)`;
-          dropdown.appendChild(opt);
-        });
-
-      // Display closest
-      if (closest)
-        document.getElementById("closestTruck").innerText =
-          `${closest.name} (${closest.distance.toFixed(2)} miles away)`;
-      else
-        document.getElementById("closestTruck").innerText = "No available units found.";
-    }
-
-    document.getElementById("dispatchBtn").addEventListener("click", () => {
-      if (!closest) return alert("No available truck to dispatch.");
-      dispatchTruck(closest.name);
+    distances.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t.truck;
+      opt.textContent = `${t.truck} - ${t.distance.toFixed(2)} mi`;
+      dropdown.appendChild(opt);
     });
 
-    document.getElementById("dispatchAltBtn").addEventListener("click", () => {
-      const altTruck = document.getElementById("sendInstead").value;
-      if (!altTruck) return alert("Select a truck first.");
-      dispatchTruck(altTruck);
+    document.getElementById("closestTruck").textContent =
+      `${closest.truck} (${closest.distance.toFixed(2)} mi away)`;
+
+    new google.maps.Marker({
+      map,
+      position: { lat: closest.lat, lng: closest.lon },
+      label: closest.truck
     });
+  }
 
-    function dispatchTruck(name) {
-      const truck = trucks.find(t => t.name === name);
-      if (!truck) return alert("Truck not found.");
-      truck.status = "En Route";
-      markers[name].setStyle({ color: getColor("En Route") });
+  function haversine(lat1, lon1, lat2, lon2) {
+    const R = 3958.8; // miles
+    const toRad = deg => deg * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+              Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.asin(Math.sqrt(a));
+  }
 
-      // Save to localStorage
-      const activeCall = {
-        address: address,
-        truck: truck.name,
-        status: "En Route",
-        time: new Date().toLocaleTimeString()
-      };
-      localStorage.setItem("activeCall", JSON.stringify(activeCall));
+  function dispatchTruck(truckName) {
+    let activeTrucks = JSON.parse(localStorage.getItem("activeTrucks") || "[]");
+    const dispatched = {
+      truck: truckName,
+      address: address,
+      status: "En Route",
+      elapsed: 0,
+      lastUpdate: Date.now()
+    };
+    activeTrucks.push(dispatched);
+    localStorage.setItem("activeTrucks", JSON.stringify(activeTrucks));
+    window.location.href = "index.html";
+  }
 
-      // Redirect to active call screen
-      window.location.href = "active.html";
-    }
+  document.getElementById("dispatchBtn").addEventListener("click", () => {
+    if (!closest) return alert("No truck data loaded yet.");
+    dispatchTruck(closest.truck);
+  });
 
-    init();
-  </script>
+  document.getElementById("sendAlternateBtn").addEventListener("click", () => {
+    const alt = document.getElementById("alternateSelect").value;
+    if (!alt) return alert("Select a unit first.");
+    dispatchTruck(alt);
+  });
+</script>
+
+<script async
+  src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap">
+</script>
+
 </body>
 </html>
