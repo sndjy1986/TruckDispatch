@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dispatch Application - Map View</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Dispatch Application - Interactive Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <style>
@@ -16,11 +15,6 @@
     .map-container {
       padding: 15px;
     }
-    .map-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
     .map-box {
       height: 500px;
       width: 100%;
@@ -28,14 +22,7 @@
       border-radius: 8px;
       border: 1px solid #ccc;
     }
-    .recommendation {
-      margin-top: 15px;
-      background: #fff;
-      padding: 10px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.1);
-    }
-    .truck-list {
+    .truck-list, .recommendation {
       margin-top: 15px;
       background: #fff;
       padding: 10px;
@@ -54,16 +41,32 @@
     .truck-list th {
       background: #f2f2f2;
     }
+    .status-menu {
+      position: absolute;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+      display: none;
+      z-index: 1000;
+    }
+    .status-menu button {
+      display: block;
+      width: 100%;
+      border: none;
+      background: none;
+      padding: 8px 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .status-menu button:hover {
+      background: #eee;
+    }
   </style>
 </head>
 <body>
-
   <div class="map-container">
-    <div class="map-header">
-      <h2>Map View / Unit Recommendation</h2>
-      <button onclick="window.location.href='index.html'">⬅ Back</button>
-    </div>
-
+    <h2>Map View / Unit Recommendation</h2>
     <div id="map" class="map-box"></div>
 
     <div class="recommendation">
@@ -84,52 +87,26 @@
         <tbody></tbody>
       </table>
     </div>
+
+    <div class="status-menu" id="statusMenu">
+      <button data-status="Available">Available</button>
+      <button data-status="En Route">En Route</button>
+      <button data-status="On Scene">On Scene</button>
+      <button data-status="Destination">Destination</button>
+      <button data-status="Logistics">Logistics</button>
+      <button data-status="Out of Service">Out of Service</button>
+    </div>
   </div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
     const address = params.get("address");
-
     const sheetURL = "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
-
     const map = L.map("map").setView([34.5, -82.65], 10);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
 
-    // Geocode the call address
-    async function getCallLocation() {
-      let query = address;
-      if (!/south carolina|sc/i.test(address)) {
-        query += ", South Carolina, USA";
-      }
-      const geocodeAPI = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}`;
-      const response = await fetch(geocodeAPI);
-      const data = await response.json();
-      if (data.length > 0) {
-        const { lat, lon } = data[0];
-        const callMarker = L.marker([lat, lon]).addTo(map);
-        callMarker.bindPopup("📍 Call Location").openPopup();
-        map.setView([lat, lon], 12);
-        return { lat: parseFloat(lat), lon: parseFloat(lon) };
-      } else {
-        console.error("Could not geocode address:", address);
-        return null;
-      }
-    }
-
-    // Fetch truck data from Google Sheets
-    async function getTruckData() {
-      const res = await fetch(sheetURL);
-      const text = await res.text();
-      const json = JSON.parse(text.substr(47).slice(0, -2));
-      const rows = json.table.rows;
-      const trucks = rows.map(r => ({
-        name: r.c[0]?.v,
-        status: r.c[1]?.v,
-        lat: parseFloat(r.c[2]?.v),
-        lon: parseFloat(r.c[3]?.v)
-      }));
-      return trucks.filter(t => !isNaN(t.lat) && !isNaN(t.lon));
-    }
+    let trucks = [];
+    let markers = {};
 
     function getColor(status) {
       switch (status?.toLowerCase()) {
@@ -144,7 +121,7 @@
     }
 
     function distance(lat1, lon1, lat2, lon2) {
-      const R = 3958.8; // miles
+      const R = 3958.8;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLon = (lon2 - lon1) * Math.PI / 180;
       const a = Math.sin(dLat / 2) ** 2 +
@@ -155,59 +132,104 @@
       return R * c;
     }
 
+    async function getCallLocation() {
+      let query = address;
+      if (!/south carolina|sc/i.test(address)) query += ", South Carolina, USA";
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (data.length > 0) {
+        const { lat, lon } = data[0];
+        const callMarker = L.marker([lat, lon]).addTo(map);
+        callMarker.bindPopup("📍 Call Location").openPopup();
+        map.setView([lat, lon], 12);
+        return { lat: parseFloat(lat), lon: parseFloat(lon) };
+      }
+      return null;
+    }
+
+    async function getTruckData() {
+      const res = await fetch(sheetURL);
+      const text = await res.text();
+      const json = JSON.parse(text.substr(47).slice(0, -2));
+      const rows = json.table.rows;
+      const list = rows.map(r => ({
+        name: r.c[0]?.v,
+        status: r.c[1]?.v,
+        lat: parseFloat((r.c[2]?.v || "").toString().replace(/[–—]/g, "-")),
+        lon: parseFloat((r.c[3]?.v || "").toString().replace(/[–—]/g, "-")),
+      }));
+      return list.filter(t => !isNaN(t.lat) && !isNaN(t.lon));
+    }
+
     async function init() {
       const callLoc = await getCallLocation();
-      const trucks = await getTruckData();
+      trucks = await getTruckData();
 
-      let closest = null;
-      let minDist = Infinity;
-      const truckDistances = [];
+      const truckDistances = trucks.map(t => ({
+        ...t,
+        distance: callLoc ? distance(callLoc.lat, callLoc.lon, t.lat, t.lon) : Infinity
+      }));
 
-      trucks.forEach(t => {
-        if (isNaN(t.lat) || isNaN(t.lon)) return;
+      let closest = truckDistances.filter(t => t.status?.toLowerCase() === "available")
+                                  .sort((a, b) => a.distance - b.distance)[0];
 
-        const d = callLoc ? distance(callLoc.lat, callLoc.lon, t.lat, t.lon) : Infinity;
-        console.log(`${t.name} | ${t.status} | ${d.toFixed(2)} miles away`);
+      if (closest)
+        document.getElementById("closestUnit").innerText = `${closest.name} (${closest.distance.toFixed(2)} mi)`;
+      else
+        document.getElementById("closestUnit").innerText = "No available units found.";
 
-        // Plot the truck
-        const icon = L.circleMarker([t.lat, t.lon], {
+      const tbody = document.querySelector("#truckTable tbody");
+      tbody.innerHTML = "";
+      truckDistances.sort((a, b) => a.distance - b.distance).forEach(t => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${t.name}</td><td>${t.status}</td><td>${t.distance.toFixed(2)}</td>`;
+        row.addEventListener("click", e => showStatusMenu(e, t.name));
+        tbody.appendChild(row);
+
+        const marker = L.circleMarker([t.lat, t.lon], {
           color: getColor(t.status),
           radius: 8,
           fillOpacity: 1
         }).addTo(map);
-        icon.bindPopup(`${t.name} - ${t.status}`);
+        marker.bindPopup(`${t.name} - ${t.status}`);
+        marker.on("click", e => showStatusMenu(e.originalEvent, t.name));
+        markers[t.name] = marker;
+      });
+    }
 
-        // Save distance for table
-        truckDistances.push({ ...t, distance: d });
+    const menu = document.getElementById("statusMenu");
+    function showStatusMenu(e, truckName) {
+      e.preventDefault();
+      menu.style.display = "block";
+      menu.style.left = e.pageX + "px";
+      menu.style.top = e.pageY + "px";
+      menu.dataset.truck = truckName;
+    }
 
-        // Find closest available
-        if (t.status && t.status.toLowerCase() === "available" && d < minDist) {
-          minDist = d;
-          closest = t;
+    document.addEventListener("click", e => {
+      if (!menu.contains(e.target)) menu.style.display = "none";
+    });
+
+    menu.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const name = menu.dataset.truck;
+        const status = btn.dataset.status;
+        const truck = trucks.find(t => t.name === name);
+        if (truck) {
+          truck.status = status;
+          markers[name].setStyle({ color: getColor(status) });
+          updateTable();
+          menu.style.display = "none";
         }
       });
+    });
 
-      // Sort trucks by distance
-      truckDistances.sort((a, b) => a.distance - b.distance);
-
-      // Update closest unit text
-      if (closest) {
-        document.getElementById("closestUnit").innerText =
-          `${closest.name} (${minDist.toFixed(2)} miles away)`;
-      } else {
-        document.getElementById("closestUnit").innerText = "No available units found.";
-      }
-
-      // Populate truck table
+    function updateTable() {
       const tbody = document.querySelector("#truckTable tbody");
-      truckDistances.forEach(t => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-          <td>${t.name}</td>
-          <td>${t.status}</td>
-          <td>${t.distance === Infinity ? "N/A" : t.distance.toFixed(2)}</td>
-        `;
-        tbody.appendChild(row);
+      tbody.querySelectorAll("tr").forEach(tr => {
+        const name = tr.children[0].innerText;
+        const truck = trucks.find(t => t.name === name);
+        tr.children[1].innerText = truck.status;
       });
     }
 
