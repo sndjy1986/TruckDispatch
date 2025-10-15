@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dispatch Application - Main</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- TOP SECTION -->
+    <div class="top-section">
+      <!-- ADDRESS AREA -->
+      <div class="address-box">
+        <h2>Address</h2>
+        <input type="text" id="address1" placeholder="Street Address">
+        <input type="text" id="address2" placeholder="Apt / Cross Street">
+        <button id="okBtn">OK</button>
+      </div>
+
+      <!-- MAP ICON / STATUS AREA -->
+      <div class="status-box">
+        <div class="map-placeholder">🗺️</div>
+        <h3>Level: 7</h3>
+        <h3>System Status: Level 3</h3>
+      </div>
+    </div>
+
+    <!-- LOWER SECTION -->
+    <div class="lower-section">
+
+      <!-- UNITS AVAILABLE -->
+      <div class="units-box">
+        <h2>Units Available</h2>
+        <ul>
+          <li>MED-1</li>
+          <li>MED-2</li>
+          <li>LOG-3</li>
+          <li>ENG-4</li>
+        </ul>
+      </div>
+
+      <!-- TIMERS / UNITS OUT -->
+      <div class="timers-box">
+        <h2>Timers / Units Out</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Unit</th>
+              <th>Destination</th>
+              <th>Time Out</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>MED-0</td><td>Main St</td><td>11:12</td></tr>
+            <tr><td>MED-6</td><td>Logistics</td><td>8:12</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ALERT AREA -->
+      <div class="alert-box">
+        <h2>Flashes When &lt; 3 Units</h2>
+        <div class="flash-placeholder">⚠</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Go to map screen
+    document.getElementById("okBtn").addEventListener("click", () => {
+      const address1 = document.getElementById("address1").value;
+      const address2 = document.getElementById("address2").value;
+      const fullAddress = encodeURIComponent(address1 + " " + address2);
+      window.location.href = `map.html?address=${fullAddress}`;
+    });
+  </script>
+
+</body>
+</html>
