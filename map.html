@@ -25,32 +25,41 @@
   </div>
 
   <script>
+    // Get address from URL parameters
     const params = new URLSearchParams(window.location.search);
     const address = params.get("address");
-    const geocodeAPI = `https://nominatim.openstreetmap.org/search?format=json&q=${address}`;
+
+    // Google Sheet JSON endpoint
     const sheetURL = "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
 
-    const map = L.map("map").setView([35.22, -97.44], 11);
+    // Initialize Leaflet map
+    const map = L.map("map").setView([34.5, -82.65], 10);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
     }).addTo(map);
 
+    // Geocode the address entered
     async function getCallLocation() {
+      const geocodeAPI = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
       const response = await fetch(geocodeAPI);
       const data = await response.json();
       if (data.length > 0) {
         const { lat, lon } = data[0];
         const callMarker = L.marker([lat, lon]).addTo(map);
-        callMarker.bindPopup("Call Location").openPopup();
+        callMarker.bindPopup("📍 Call Location").openPopup();
         map.setView([lat, lon], 12);
         return { lat: parseFloat(lat), lon: parseFloat(lon) };
+      } else {
+        console.error("Could not geocode address:", address);
+        return null;
       }
     }
 
+    // Fetch truck data from Google Sheets
     async function getTruckData() {
       const res = await fetch(sheetURL);
       const text = await res.text();
-      const json = JSON.parse(text.substr(47).slice(0, -2)); // clean up the Google Sheets JSON
+      const json = JSON.parse(text.substr(47).slice(0, -2)); // Clean JSON
       const rows = json.table.rows;
       const trucks = rows.map(r => ({
         name: r.c[0]?.v,
@@ -61,71 +70,79 @@
       return trucks.filter(t => !isNaN(t.lat) && !isNaN(t.lon));
     }
 
+    // Get map color for each status
     function getColor(status) {
-      switch (status) {
-        case "Available": return "green";
-        case "En Route": return "blue";
-        case "On Scene": return "orange";
-        case "Destination": return "purple";
-        case "Logistics": return "yellow";
-        case "Out of Service": return "gray";
+      switch (status?.toLowerCase()) {
+        case "available": return "green";
+        case "en route": return "blue";
+        case "on scene": return "orange";
+        case "destination": return "purple";
+        case "logistics": return "yellow";
+        case "out of service": return "gray";
         default: return "black";
       }
     }
 
-function distance(lat1, lon1, lat2, lon2) {
-  const R = 3958.8; // Earth radius in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-            Math.cos(lat1 * Math.PI / 180) *
-            Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+    // Calculate distance in MILES using Haversine formula
+    function distance(lat1, lon1, lat2, lon2) {
+      const R = 3958.8; // Earth radius in miles
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) *
+                Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
 
-// Updated closest-unit logic
-if (t.status && t.status.toLowerCase() === "available" && d < minDist) {
-  minDist = d;
-  closest = t;
-}
-
+    // Initialize everything
     async function init() {
       const callLoc = await getCallLocation();
       const trucks = await getTruckData();
 
-      let closest = null, minDist = Infinity;
+      let closest = null;
+      let minDist = Infinity;
 
-      console.log(`${t.name} | ${t.status} | ${d.toFixed(2)} miles away`);
-
+      // 🚚 The Truck Loop
       trucks.forEach(t => {
+        // Skip if invalid coordinates
+        if (isNaN(t.lat) || isNaN(t.lon)) return;
+
+        // Calculate distance from call
+        const d = callLoc ? distance(callLoc.lat, callLoc.lon, t.lat, t.lon) : 0;
+
+        // Debug output in browser console
+        console.log(`${t.name} | ${t.status} | ${d.toFixed(2)} miles away`);
+
+        // Draw the truck marker
         const icon = L.circleMarker([t.lat, t.lon], {
           color: getColor(t.status),
           radius: 8,
           fillOpacity: 1
         }).addTo(map);
+
         icon.bindPopup(`${t.name} - ${t.status}`);
 
-        if (callLoc) {
-          const d = distance(callLoc.lat, callLoc.lon, t.lat, t.lon);
-          if (t.status === "Available" && d < minDist) {
-            minDist = d;
-            closest = t;
-          }
+        // Determine closest available unit
+        if (t.status && t.status.toLowerCase() === "available" && d < minDist) {
+          minDist = d;
+          closest = t;
         }
       });
 
+      // Display the closest truck info
       if (closest) {
         document.getElementById("closestUnit").innerText =
-          `${closest.name} (${minDist.toFixed(2)} km away)`;
+          `${closest.name} (${minDist.toFixed(2)} miles away)`;
       } else {
-        document.getElementById("closestUnit").innerText = "No available units found.";
+        document.getElementById("closestUnit").innerText =
+          "No available units found.";
       }
     }
 
+    // Start it all
     init();
   </script>
-
 </body>
 </html>
