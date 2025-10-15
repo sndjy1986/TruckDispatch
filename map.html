@@ -145,21 +145,25 @@
       `${closest.truck} (${closest.distance.toFixed(2)} mi by road)`;
   }
 
-  async function getDrivingDistance(lat1, lon1, lat2, lon2) {
-    try {
-      const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
-        method: "POST",
-        headers: {
-          "Authorization": ORS_API_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          coordinates: [
-            [lon1, lat1],
-            [lon2, lat2]
-          ]
-        })
-      });
+async function getDrivingDistance(lat1, lon1, lat2, lon2) {
+  try {
+    const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
+      method: "POST",
+      headers: {
+        "Authorization": eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImRjYzYwMTAxMmQ3NzRmODNhMGIwYTE5NDgzY2Y5Yzc4IiwiaCI6Im11cm11cjY0In0=,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ coordinates: [[lon1, lat1], [lon2, lat2]] })
+    });
+    const data = await res.json();
+    if (!data.features) throw new Error("Invalid response");
+    const meters = data.features[0].properties.summary.distance;
+    return meters / 1609.34; // miles
+  } catch (err) {
+    console.warn("ORS routing error, using crow-flies:", err);
+    return haversine(lat1, lon1, lat2, lon2); // fallback
+  }
+}
 
       const data = await res.json();
       const meters = data.features[0].properties.summary.distance;
