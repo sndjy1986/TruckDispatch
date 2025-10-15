@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dispatch Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   body {
     font-family: Arial, sans-serif;
@@ -11,45 +13,46 @@
     margin: 0;
     padding: 20px;
   }
-  h1 { text-align: center; color: #004c99; }
+  h1 {
+    text-align: center;
+    color: #004c99;
+  }
   #map {
     width: 100%;
-    height: 400px;
-    border-radius: 10px;
+    height: 450px;
     margin-top: 10px;
+    border-radius: 10px;
   }
   .dispatch-panel {
     background: white;
     padding: 15px;
     border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    margin-top: 20px;
+    margin-top: 15px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
   }
-  .dispatch-panel h2, .dispatch-panel h3 { margin-top: 0; }
   button {
     background: #007bff;
     color: white;
     border: none;
     padding: 10px 15px;
-    margin-top: 5px;
     border-radius: 5px;
     cursor: pointer;
   }
   button:hover { background: #0056b3; }
   select {
     padding: 8px;
-    margin-left: 10px;
+    margin-left: 8px;
   }
 </style>
 </head>
 <body>
 
-<h1>Dispatch Map</h1>
+<h1>Dispatch Map (Drive-Time Routing)</h1>
 <div id="map"></div>
 
 <div class="dispatch-panel">
-  <h2>Closest Unit</h2>
-  <div id="closestTruck">Loading...</div>
+  <h2>Closest Unit (By Road)</h2>
+  <div id="closestTruck">Calculating...</div>
   <button id="dispatchBtn">Dispatch Closest Truck</button>
 
   <h3>Or Send Another Unit</h3>
@@ -60,39 +63,38 @@
 <script>
   const SHEET_ID = "1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0";
   const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
+  const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImRjYzYwMTAxMmQ3NzRmODNhMGIwYTE5NDgzY2Y5Yzc4IiwiaCI6Im11cm11cjY0In0=";  // 🔑 <-- Replace with your key
 
   const params = new URLSearchParams(window.location.search);
   const address = params.get("address");
+  let map, callMarker, trucks = [], closest = null;
 
-  let trucks = [];
-  let closest = null;
-  let map, callLoc;
+  // Initialize map
+  map = L.map("map").setView([34.5212, -82.6484], 10);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
 
-  function initMap() {
-    map = new google.maps.Map(document.getElementById("map"), {
-      center: { lat: 34.5212, lng: -82.6484 },
-      zoom: 10
-    });
-
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ address: address + ", SC" }, (results, status) => {
-      if (status === "OK") {
-        callLoc = results[0].geometry.location;
-        new google.maps.Marker({
-          map,
-          position: callLoc,
-          label: "📍",
-          title: address
-        });
-        map.setCenter(callLoc);
-        loadTrucks();
-      } else {
-        alert("Could not find location: " + status);
+  async function locateAddress() {
+    try {
+      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", SC")}`);
+      const data = await resp.json();
+      if (data.length === 0) {
+        alert("Address not found on map.");
+        return;
       }
-    });
+      const lat = parseFloat(data[0].lat);
+      const lon = parseFloat(data[0].lon);
+      callMarker = L.marker([lat, lon]).addTo(map).bindPopup(`<b>Call Location</b><br>${address}`).openPopup();
+      map.setView([lat, lon], 12);
+      loadTrucks(lat, lon);
+    } catch (err) {
+      alert("Error locating address: " + err);
+    }
   }
 
-  async function loadTrucks() {
+  async function loadTrucks(callLat, callLon) {
     try {
       const res = await fetch(API_URL);
       const text = await res.text();
@@ -106,24 +108,33 @@
         lon: parseFloat((r.c[3]?.v || "").toString().replace(/[–—]/g, "-")),
       })).filter(t => t.status === "Available" && !isNaN(t.lat) && !isNaN(t.lon));
 
-      findClosestTruck();
+      trucks.forEach(t => {
+        L.marker([t.lat, t.lon], { title: t.truck })
+          .addTo(map)
+          .bindPopup(`<b>${t.truck}</b><br>Available`);
+      });
+
+      await findClosestTruck(callLat, callLon);
     } catch (err) {
-      alert("Error loading trucks: " + err);
+      alert("Error loading truck data: " + err);
     }
   }
 
-  function findClosestTruck() {
-    const distances = trucks.map(t => ({
-      ...t,
-      distance: haversine(callLoc.lat(), callLoc.lng(), t.lat, t.lon)
-    }));
-    distances.sort((a, b) => a.distance - b.distance);
+  async function findClosestTruck(callLat, callLon) {
+    const results = [];
+    for (const t of trucks) {
+      const distance = await getDrivingDistance(t.lat, t.lon, callLat, callLon);
+      if (distance !== null) {
+        results.push({ ...t, distance });
+      }
+    }
 
-    closest = distances[0];
+    results.sort((a, b) => a.distance - b.distance);
+    closest = results[0];
+
     const dropdown = document.getElementById("alternateSelect");
     dropdown.innerHTML = "";
-
-    distances.forEach(t => {
+    results.forEach(t => {
       const opt = document.createElement("option");
       opt.value = t.truck;
       opt.textContent = `${t.truck} - ${t.distance.toFixed(2)} mi`;
@@ -131,24 +142,33 @@
     });
 
     document.getElementById("closestTruck").textContent =
-      `${closest.truck} (${closest.distance.toFixed(2)} mi away)`;
-
-    new google.maps.Marker({
-      map,
-      position: { lat: closest.lat, lng: closest.lon },
-      label: closest.truck
-    });
+      `${closest.truck} (${closest.distance.toFixed(2)} mi by road)`;
   }
 
-  function haversine(lat1, lon1, lat2, lon2) {
-    const R = 3958.8; // miles
-    const toRad = deg => deg * Math.PI / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat / 2) ** 2 +
-              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-              Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.asin(Math.sqrt(a));
+  async function getDrivingDistance(lat1, lon1, lat2, lon2) {
+    try {
+      const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
+        method: "POST",
+        headers: {
+          "Authorization": ORS_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          coordinates: [
+            [lon1, lat1],
+            [lon2, lat2]
+          ]
+        })
+      });
+
+      const data = await res.json();
+      const meters = data.features[0].properties.summary.distance;
+      const miles = meters / 1609.34;
+      return miles;
+    } catch (err) {
+      console.error("ORS routing error:", err);
+      return null;
+    }
   }
 
   function dispatchTruck(truckName) {
@@ -175,11 +195,8 @@
     if (!alt) return alert("Select a unit first.");
     dispatchTruck(alt);
   });
-</script>
 
-<script async
-  src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap">
+  locateAddress();
 </script>
-
 </body>
 </html>
