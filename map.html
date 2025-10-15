@@ -97,6 +97,8 @@ if (t.status && t.status.toLowerCase() === "available" && d < minDist) {
 
       let closest = null, minDist = Infinity;
 
+      console.log(`${t.name} | ${t.status} | ${d.toFixed(2)} miles away`);
+
       trucks.forEach(t => {
         const icon = L.circleMarker([t.lat, t.lon], {
           color: getColor(t.status),
