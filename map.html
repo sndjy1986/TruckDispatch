@@ -40,7 +40,7 @@
 
     // Geocode the address entered
     async function getCallLocation() {
-      const geocodeAPI = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
+      const geocodeAPI = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(address + ', South Carolina, USA')}`;
       const response = await fetch(geocodeAPI);
       const data = await response.json();
       if (data.length > 0) {
