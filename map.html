@@ -1,206 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dispatch Map</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #f0f2f5;
-    margin: 0;
-    padding: 20px;
-  }
-  h1 {
-    text-align: center;
-    color: #004c99;
-  }
-  #map {
-    width: 100%;
-    height: 450px;
-    margin-top: 10px;
-    border-radius: 10px;
-  }
-  .dispatch-panel {
-    background: white;
-    padding: 15px;
-    border-radius: 10px;
-    margin-top: 15px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-  }
-  button {
-    background: #007bff;
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 5px;
-    cursor: pointer;
-  }
-  button:hover { background: #0056b3; }
-  select {
-    padding: 8px;
-    margin-left: 8px;
-  }
-</style>
+  <meta charset="UTF-8">
+  <title>Truck Locator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha512-sA+e2sQVwCwT+tWfO93kD6vY1C6Q4xKkKx4xQYxCfrxJxqT3k5d7mK4qz9X0hVvN5Zz+9zE4ZlQq3F3lfm3+3g=="
+    crossorigin=""
+  />
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; width: 100%; }
+    .infoBox {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.2);
+      z-index: 999;
+      font-family: Arial, sans-serif;
+    }
+  </style>
 </head>
 <body>
+  <div class="infoBox">
+    <b>Dispatch Destination:</b> <span id="address"></span><br>
+    <b>Closest Truck:</b> <span id="closestTruck"></span>
+  </div>
+  <div id="map"></div>
 
-<h1>Dispatch Map (Drive-Time Routing)</h1>
-<div id="map"></div>
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha512-vV0M7Hwv5a3ku+gC6uEMaP1Fqdl9gvlzT0Y9k+eAfY4ErK1bpvJ0T1QezX0V6O4TpxmB5O9x0E5kF5N+eM6u5w=="
+    crossorigin="">
+  </script>
 
-<div class="dispatch-panel">
-  <h2>Closest Unit (By Road)</h2>
-  <div id="closestTruck">Calculating...</div>
-  <button id="dispatchBtn">Dispatch Closest Truck</button>
+  <script>
+    const ORS_API_KEY = "YOUR_ORS_API_KEY"; // Replace with your OpenRouteService key
+    const trucksUrl = "trucks.json"; // or your endpoint
 
-  <h3>Or Send Another Unit</h3>
-  <select id="alternateSelect"></select>
-  <button id="sendAlternateBtn">Dispatch Selected Unit</button>
-</div>
+    const map = L.map('map').setView([34.5, -82.65], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-<script>
-  const SHEET_ID = "1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0";
-  const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
-  const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImRjYzYwMTAxMmQ3NzRmODNhMGIwYTE5NDgzY2Y5Yzc4IiwiaCI6Im11cm11cjY0In0=";  // 🔑 <-- Replace with your key
+    // simple haversine formula for fallback
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // meters
+      const toRad = deg => deg * Math.PI / 180;
+      const φ1 = toRad(lat1), φ2 = toRad(lat2);
+      const Δφ = toRad(lat2 - lat1);
+      const Δλ = toRad(lon2 - lon1);
+      const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return (R * c) / 1609.34; // miles
+    }
 
-  const params = new URLSearchParams(window.location.search);
-  const address = params.get("address");
-  let map, callMarker, trucks = [], closest = null;
+    // safer ORS call with fallback
+    async function getDrivingDistance(lat1, lon1, lat2, lon2) {
+      try {
+        const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
+          method: "POST",
+          headers: {
+            "Authorization": eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImRjYzYwMTAxMmQ3NzRmODNhMGIwYTE5NDgzY2Y5Yzc4IiwiaCI6Im11cm11cjY0In0=,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ coordinates: [[lon1, lat1], [lon2, lat2]] })
+        });
 
-  // Initialize map
-  map = L.map("map").setView([34.5212, -82.6484], 10);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
-  }).addTo(map);
+        if (!res.ok) throw new Error("ORS error: " + res.status);
+        const data = await res.json();
 
-  async function locateAddress() {
-    try {
-      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", SC")}`);
-      const data = await resp.json();
-      if (data.length === 0) {
-        alert("Address not found on map.");
+        if (!data.features || !data.features[0]) throw new Error("Invalid ORS response");
+
+        const meters = data.features[0].properties.summary.distance;
+        return meters / 1609.34; // miles
+      } catch (err) {
+        console.warn("ORS routing error, using crow-flies fallback:", err);
+        return haversine(lat1, lon1, lat2, lon2);
+      }
+    }
+
+    async function loadTrucks() {
+      const response = await fetch(trucksUrl);
+      const trucks = await response.json();
+      return trucks;
+    }
+
+    async function findClosestTruck(destLat, destLon) {
+      const trucks = await loadTrucks();
+      let closest = null;
+      let shortestDistance = Infinity;
+
+      for (const truck of trucks) {
+        const dist = await getDrivingDistance(truck.lat, truck.lon, destLat, destLon);
+        if (dist < shortestDistance) {
+          shortestDistance = dist;
+          closest = truck;
+        }
+      }
+
+      return { truck: closest, distance: shortestDistance };
+    }
+
+    async function locateAddress() {
+      const params = new URLSearchParams(window.location.search);
+      const address = params.get("address") || "Anderson, SC";
+      document.getElementById("address").innerText = address;
+
+      // Geocode address via Nominatim
+      const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`);
+      const geoData = await geoRes.json();
+      if (!geoData || !geoData[0]) {
+        alert("Address not found!");
         return;
       }
-      const lat = parseFloat(data[0].lat);
-      const lon = parseFloat(data[0].lon);
-      callMarker = L.marker([lat, lon]).addTo(map).bindPopup(`<b>Call Location</b><br>${address}`).openPopup();
-      map.setView([lat, lon], 12);
-      loadTrucks(lat, lon);
-    } catch (err) {
-      alert("Error locating address: " + err);
-    }
-  }
 
-  async function loadTrucks(callLat, callLon) {
-    try {
-      const res = await fetch(API_URL);
-      const text = await res.text();
-      const json = JSON.parse(text.substr(47).slice(0, -2));
-      const rows = json.table.rows;
+      const destLat = parseFloat(geoData[0].lat);
+      const destLon = parseFloat(geoData[0].lon);
+      const destMarker = L.marker([destLat, destLon], { title: "Destination" }).addTo(map);
+      destMarker.bindPopup(`<b>${address}</b>`).openPopup();
+      map.setView([destLat, destLon], 13);
 
-      trucks = rows.map(r => ({
-        truck: r.c[0]?.v,
-        status: r.c[1]?.v,
-        lat: parseFloat((r.c[2]?.v || "").toString().replace(/[–—]/g, "-")),
-        lon: parseFloat((r.c[3]?.v || "").toString().replace(/[–—]/g, "-")),
-      })).filter(t => t.status === "Available" && !isNaN(t.lat) && !isNaN(t.lon));
+      const { truck, distance } = await findClosestTruck(destLat, destLon);
 
-      trucks.forEach(t => {
-        L.marker([t.lat, t.lon], { title: t.truck })
-          .addTo(map)
-          .bindPopup(`<b>${t.truck}</b><br>Available`);
-      });
-
-      await findClosestTruck(callLat, callLon);
-    } catch (err) {
-      alert("Error loading truck data: " + err);
-    }
-  }
-
-  async function findClosestTruck(callLat, callLon) {
-    const results = [];
-    for (const t of trucks) {
-      const distance = await getDrivingDistance(t.lat, t.lon, callLat, callLon);
-      if (distance !== null) {
-        results.push({ ...t, distance });
+      if (truck) {
+        document.getElementById("closestTruck").innerText =
+          `${truck.unit} (${distance.toFixed(1)} mi)`;
+        const truckMarker = L.marker([truck.lat, truck.lon], {
+          icon: L.icon({
+            iconUrl: "https://cdn-icons-png.flaticon.com/512/743/743007.png",
+            iconSize: [32, 32]
+          })
+        }).addTo(map);
+        truckMarker.bindPopup(`<b>${truck.unit}</b><br>${distance.toFixed(1)} mi away`);
+        L.polyline([[truck.lat, truck.lon], [destLat, destLon]], { color: "blue" }).addTo(map);
+      } else {
+        document.getElementById("closestTruck").innerText = "None available";
       }
     }
 
-    results.sort((a, b) => a.distance - b.distance);
-    closest = results[0];
-
-    const dropdown = document.getElementById("alternateSelect");
-    dropdown.innerHTML = "";
-    results.forEach(t => {
-      const opt = document.createElement("option");
-      opt.value = t.truck;
-      opt.textContent = `${t.truck} - ${t.distance.toFixed(2)} mi`;
-      dropdown.appendChild(opt);
-    });
-
-    document.getElementById("closestTruck").textContent =
-      `${closest.truck} (${closest.distance.toFixed(2)} mi by road)`;
-  }
-
-async function getDrivingDistance(lat1, lon1, lat2, lon2) {
-  try {
-    const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
-      method: "POST",
-      headers: {
-        "Authorization": eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImRjYzYwMTAxMmQ3NzRmODNhMGIwYTE5NDgzY2Y5Yzc4IiwiaCI6Im11cm11cjY0In0=,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ coordinates: [[lon1, lat1], [lon2, lat2]] })
-    });
-    const data = await res.json();
-    if (!data.features) throw new Error("Invalid response");
-    const meters = data.features[0].properties.summary.distance;
-    return meters / 1609.34; // miles
-  } catch (err) {
-    console.warn("ORS routing error, using crow-flies:", err);
-    return haversine(lat1, lon1, lat2, lon2); // fallback
-  }
-}
-
-      const data = await res.json();
-      const meters = data.features[0].properties.summary.distance;
-      const miles = meters / 1609.34;
-      return miles;
-    } catch (err) {
-      console.error("ORS routing error:", err);
-      return null;
-    }
-  }
-
-  function dispatchTruck(truckName) {
-    let activeTrucks = JSON.parse(localStorage.getItem("activeTrucks") || "[]");
-    const dispatched = {
-      truck: truckName,
-      address: address,
-      status: "En Route",
-      elapsed: 0,
-      lastUpdate: Date.now()
-    };
-    activeTrucks.push(dispatched);
-    localStorage.setItem("activeTrucks", JSON.stringify(activeTrucks));
-    window.location.href = "index.html";
-  }
-
-  document.getElementById("dispatchBtn").addEventListener("click", () => {
-    if (!closest) return alert("No truck data loaded yet.");
-    dispatchTruck(closest.truck);
-  });
-
-  document.getElementById("sendAlternateBtn").addEventListener("click", () => {
-    const alt = document.getElementById("alternateSelect").value;
-    if (!alt) return alert("Select a unit first.");
-    dispatchTruck(alt);
-  });
-
-  locateAddress();
-</script>
+    locateAddress();
+  </script>
 </body>
 </html>
