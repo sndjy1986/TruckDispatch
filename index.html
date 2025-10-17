@@ -2,91 +2,77 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>EMS Unit Tracker</title>
+  <title>Anderson County EMS Dispatch</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
-      background: #1e1e2f;
-      color: white;
+      background-color: #f0f4f8;
+      color: #000;
       font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
       margin: 0;
+      padding: 0;
     }
-    h1 { color: #4db8ff; margin-top: 15px; }
-    #systemStatus {
-      font-weight: bold;
-      font-size: 1.2em;
-      margin: 10px;
-      padding: 5px 10px;
-      border-radius: 5px;
+    header {
+      background-color: #007bff;
+      color: white;
+      padding: 10px 0;
+      text-align: center;
+      font-size: 1.5em;
+    }
+    .container {
+      display: flex;
+      justify-content: space-between;
+      padding: 20px;
+      flex-wrap: wrap;
+    }
+    .box {
+      background: white;
+      border: 2px solid #007bff;
+      border-radius: 10px;
+      padding: 15px;
+      width: 48%;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .box h2 {
+      text-align: center;
+      color: #007bff;
+      margin-top: 0;
     }
     .grid {
       display: flex;
-      justify-content: center;
       flex-wrap: wrap;
       gap: 10px;
-      width: 90%;
+      justify-content: center;
     }
     .unit {
-      background: #333;
-      border-radius: 10px;
+      background-color: #e6f0ff;
+      border: 1px solid #007bff;
+      border-radius: 8px;
       padding: 10px;
-      width: 110px;
-      height: 80px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      width: 100px;
+      text-align: center;
+      font-weight: bold;
       cursor: pointer;
-      user-select: none;
-      position: relative;
+      transition: background 0.3s;
     }
-    .unit.green { background: #2e8b57; }
-    .unit.yellow { background: #b8860b; }
-    .unit.red { background: #a52a2a; }
-    .timer { font-size: 0.8em; margin-top: 5px; }
-    .context-menu {
-      display: none;
-      position: absolute;
-      background: #444;
-      border: 1px solid #888;
-      border-radius: 5px;
-      padding: 5px;
-      z-index: 1000;
-    }
-    .context-menu button {
-      display: block;
-      width: 100%;
-      background: none;
-      color: white;
-      border: none;
-      text-align: left;
-      padding: 5px;
-      cursor: pointer;
-    }
-    .context-menu button:hover {
-      background: #666;
+    .unit:hover {
+      background-color: #cce0ff;
     }
   </style>
 </head>
 <body>
-  <h1>Anderson County EMS</h1>
-  <div id="systemStatus">Loading system status...</div>
+  <header>Anderson County EMS Dispatch</header>
 
-  <h2>Available Units</h2>
-  <div id="available" class="grid"></div>
+  <div class="container">
+    <div class="box">
+      <h2>Available Units</h2>
+      <div id="available" class="grid"></div>
+    </div>
 
-  <h2>Units Out</h2>
-  <div id="unitsOut" class="grid"></div>
-
-  <div id="contextMenu" class="context-menu">
-    <button data-status="En Route">En Route</button>
-    <button data-status="On Scene">On Scene</button>
-    <button data-status="En Route to Destination">En Route to Destination</button>
-    <button data-status="At Destination">At Destination</button>
-    <button data-status="Available">Available</button>
+    <div class="box">
+      <h2>Units Out</h2>
+      <div id="unitsOut" class="grid"></div>
+    </div>
   </div>
 
   <script>
@@ -95,137 +81,59 @@
 
     const availableDiv = document.getElementById("available");
     const unitsOutDiv = document.getElementById("unitsOut");
-    const systemStatusDiv = document.getElementById("systemStatus");
-    const contextMenu = document.getElementById("contextMenu");
-    let activeTimers = {};
 
     async function loadTruckData() {
       const res = await fetch(sheetURL);
       const text = await res.text();
       const json = JSON.parse(text.substr(47).slice(0, -2));
-      const rows = json.table.rows.map((r) => ({
+      const rows = json.table.rows.map(r => ({
         unit: r.c[0]?.v || "Unknown",
-        status: r.c[1]?.v || "Unavailable",
+        status: r.c[1]?.v || "Unavailable"
       }));
       return rows;
-    }
-
-    function updateSystemStatus(count) {
-      if (count > 10) {
-        systemStatusDiv.style.background = "green";
-        systemStatusDiv.innerText = `System Status: GREEN (${count} available)`;
-      } else if (count < 4) {
-        systemStatusDiv.style.background = "red";
-        systemStatusDiv.innerText = `System Status: RED (${count} available)`;
-      } else {
-        systemStatusDiv.style.background = "goldenrod";
-        systemStatusDiv.innerText = `System Status: YELLOW (${count} available)`;
-      }
     }
 
     function renderUnits(trucks) {
       availableDiv.innerHTML = "";
       unitsOutDiv.innerHTML = "";
 
-      trucks.forEach((t) => {
+      trucks.forEach(t => {
         const el = document.createElement("div");
-        el.className = "unit green";
-        el.innerHTML = `<b>${t.unit}</b>`;
-        el.dataset.unit = t.unit;
-        el.dataset.status = t.status;
+        el.className = "unit";
+        el.textContent = t.unit;
 
-        el.oncontextmenu = (e) => {
-          e.preventDefault();
-          showContextMenu(e, t.unit);
+        // Move units manually between columns by clicking
+        el.onclick = () => {
+          if (el.parentElement.id === "available") {
+            unitsOutDiv.appendChild(el);
+          } else {
+            availableDiv.appendChild(el);
+          }
         };
 
-        if (t.status === "Available") availableDiv.appendChild(el);
-        else if (t.status !== "Out of Service") {
-          el.classList.remove("green");
-          el.classList.add("red");
-          const timer = document.createElement("div");
-          timer.className = "timer";
-          timer.id = `timer-${t.unit}`;
-          el.appendChild(timer);
+        if (t.status === "Available") {
+          availableDiv.appendChild(el);
+        } else {
           unitsOutDiv.appendChild(el);
-          startTimer(t.unit);
         }
       });
-
-      updateSystemStatus(
-        trucks.filter((t) => t.status === "Available").length
-      );
-    }
-
-    function showContextMenu(e, unit) {
-      contextMenu.style.left = e.pageX + "px";
-      contextMenu.style.top = e.pageY + "px";
-      contextMenu.style.display = "block";
-      contextMenu.dataset.unit = unit;
-    }
-
-    document.addEventListener("click", () => {
-      contextMenu.style.display = "none";
-    });
-
-    contextMenu.addEventListener("click", (e) => {
-      if (e.target.tagName === "BUTTON") {
-        const newStatus = e.target.dataset.status;
-        const unit = contextMenu.dataset.unit;
-        changeStatus(unit, newStatus);
-        contextMenu.style.display = "none";
-      }
-    });
-
-    function changeStatus(unit, status) {
-      const el = document.querySelector(`[data-unit='${unit}']`);
-      if (!el) return;
-
-      if (status === "Available") {
-        clearInterval(activeTimers[unit]);
-        el.remove();
-        el.className = "unit green";
-        el.innerHTML = `<b>${unit}</b>`;
-        el.dataset.status = "Available";
-        availableDiv.appendChild(el);
-      } else {
-        el.className = "unit red";
-        el.dataset.status = status;
-        let timer = el.querySelector(".timer");
-        if (!timer) {
-          timer = document.createElement("div");
-          timer.className = "timer";
-          el.appendChild(timer);
-        }
-        startTimer(unit);
-        unitsOutDiv.appendChild(el);
-      }
-      updateSystemStatus(availableDiv.children.length);
-    }
-
-    function startTimer(unit) {
-      const timerEl = document.getElementById(`timer-${unit}`) || document.querySelector(`[data-unit='${unit}'] .timer`);
-      const startTime = Date.now();
-      activeTimers[unit] = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const mins = Math.floor(elapsed / 60);
-        const secs = elapsed % 60;
-        timerEl.innerText = `${mins}:${secs.toString().padStart(2, "0")}`;
-      }, 1000);
     }
 
     async function init() {
       let trucks = await loadTruckData();
 
-      // If dispatchedTruck exists (from map.html)
+      // check if a truck was dispatched via map.html
       const dispatched = localStorage.getItem("dispatchedTruck");
       if (dispatched) {
         const d = JSON.parse(dispatched);
         localStorage.removeItem("dispatchedTruck");
 
-        const found = trucks.find((t) => t.unit === d.unit);
-        if (found) found.status = d.status;
-        else trucks.push({ unit: d.unit, status: d.status });
+        const match = trucks.find(t => t.unit === d.unit);
+        if (match) {
+          match.status = "En Route";
+        } else {
+          trucks.push({ unit: d.unit, status: "En Route" });
+        }
       }
 
       renderUnits(trucks);
