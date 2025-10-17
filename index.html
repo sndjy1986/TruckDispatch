@@ -231,157 +231,172 @@
     <button id="outServiceBtn">Mark Out of Service</button>
   </div>
 
-  <script>
-    const sheetURL =
-      "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
+ <script>
+  const sheetURL =
+    "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
 
-    const availableDiv = document.getElementById("available");
-    const unitsOutDiv = document.getElementById("unitsOut");
-    const unavailableDiv = document.getElementById("unavailable");
-    const availableUnitsEl = document.getElementById("availableUnits");
-    const statusIndicator = document.getElementById("statusIndicator");
-    const contextMenu = document.getElementById("contextMenu");
-    let selectedUnit = null;
-    const timers = new Map();
+  const availableDiv = document.getElementById("available");
+  const unitsOutDiv = document.getElementById("unitsOut");
+  const unavailableDiv = document.getElementById("unavailable");
+  const availableUnitsEl = document.getElementById("availableUnits");
+  const statusIndicator = document.getElementById("statusIndicator");
+  const contextMenu = document.getElementById("contextMenu");
+  let selectedUnit = null;
+  const timers = new Map();
 
-    async function loadTruckData() {
-      const res = await fetch(sheetURL);
-      const text = await res.text();
-      const json = JSON.parse(text.substr(47).slice(0, -2));
-      const rows = json.table.rows.map(r => ({
-        unit: r.c[0]?.v || "Unknown",
-        status: r.c[1]?.v || "Unavailable"
-      }));
-      return rows;
-    }
+  async function loadTruckData() {
+    const res = await fetch(sheetURL);
+    const text = await res.text();
+    const json = JSON.parse(text.substr(47).slice(0, -2));
+    return json.table.rows.map(r => ({
+      unit: r.c[0]?.v || "Unknown",
+      status: r.c[1]?.v || "Unavailable"
+    }));
+  }
 
-    function renderUnits(trucks) {
-      availableDiv.innerHTML = "";
-      unitsOutDiv.innerHTML = "";
-      unavailableDiv.innerHTML = "";
+  function renderUnits(trucks) {
+    availableDiv.innerHTML = "";
+    unitsOutDiv.innerHTML = "";
+    unavailableDiv.innerHTML = "";
 
-      trucks.forEach(t => {
-        const el = document.createElement("div");
-        el.className = "unit";
-        el.textContent = t.unit;
+    trucks.forEach(t => {
+      const el = document.createElement("div");
+      el.className = "unit";
+      el.textContent = t.unit;
 
-        el.onclick = () => {
-          if (el.parentElement.id === "available") {
-            unitsOutDiv.appendChild(el);
-          } else {
-            availableDiv.appendChild(el);
-          }
-          updateStatus();
-        };
+      el.onclick = () => {
+        if (el.parentElement.id === "available") {
+          unitsOutDiv.appendChild(el);
+        } else {
+          availableDiv.appendChild(el);
+        }
+        updateStatus();
+      };
 
-        el.oncontextmenu = (e) => {
-          e.preventDefault();
-          selectedUnit = el;
-          contextMenu.style.display = "block";
-          contextMenu.style.left = e.pageX + "px";
-          contextMenu.style.top = e.pageY + "px";
-        };
+      el.oncontextmenu = (e) => {
+        e.preventDefault();
+        selectedUnit = el;
+        contextMenu.style.display = "block";
+        contextMenu.style.left = e.pageX + "px";
+        contextMenu.style.top = e.pageY + "px";
+      };
 
-        if (t.status === "Available") availableDiv.appendChild(el);
-        else if (t.status === "Out of Service") unavailableDiv.appendChild(el);
-        else unitsOutDiv.appendChild(el);
-      });
-
-      updateStatus();
-    }
-
-    document.addEventListener("click", (e) => {
-      if (!contextMenu.contains(e.target)) contextMenu.style.display = "none";
+      if (t.status === "Available") availableDiv.appendChild(el);
+      else if (t.status === "Out of Service") unavailableDiv.appendChild(el);
+      else unitsOutDiv.appendChild(el);
     });
 
-    document.getElementById("availBtn").onclick = () => {
-      if (selectedUnit) {
-        selectedUnit.classList.remove("logistics", "outofservice", "flashing");
-        selectedUnit.querySelector(".timer")?.remove();
-        availableDiv.appendChild(selectedUnit);
-        contextMenu.style.display = "none";
-        updateStatus();
-      }
-    };
+    updateStatus();
+  }
 
-    document.getElementById("logisticsBtn").onclick = () => {
-      if (selectedUnit) {
-        selectedUnit.classList.remove("outofservice", "flashing");
-        selectedUnit.classList.add("logistics");
-        contextMenu.style.display = "none";
+  document.addEventListener("click", (e) => {
+    if (!contextMenu.contains(e.target)) contextMenu.style.display = "none";
+  });
 
-        let timeLeft = 600; // 10 minutes in seconds
-        const timerEl = document.createElement("div");
-        timerEl.className = "timer";
-        selectedUnit.appendChild(timerEl);
+  // ✅ FIX: reset any timer + text when marking available
+  document.getElementById("availBtn").onclick = () => {
+    if (selectedUnit) {
+      const t = timers.get(selectedUnit);
+      if (t) clearInterval(t);
+      timers.delete(selectedUnit);
 
-        function updateTimer() {
-          const mins = Math.floor(timeLeft / 60);
-          const secs = timeLeft % 60;
-          timerEl.textContent = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-          if (timeLeft <= 0) {
-            selectedUnit.classList.add("flashing");
-            clearInterval(timers.get(selectedUnit));
-          } else {
-            timeLeft--;
-          }
-        }
+      selectedUnit.classList.remove("logistics", "outofservice", "flashing");
+      selectedUnit.querySelector(".timer")?.remove();
 
-        updateTimer();
-        const interval = setInterval(updateTimer, 1000);
-        timers.set(selectedUnit, interval);
-      }
-    };
+      // Restore base text
+      selectedUnit.textContent = selectedUnit.textContent.split(" ")[0].trim();
 
-    document.getElementById("outServiceBtn").onclick = () => {
-      if (selectedUnit) {
-        selectedUnit.classList.remove("logistics", "flashing");
-        selectedUnit.classList.add("outofservice");
-        selectedUnit.querySelector(".timer")?.remove();
-        unavailableDiv.appendChild(selectedUnit);
-        const t = timers.get(selectedUnit);
-        if (t) clearInterval(t);
-        contextMenu.style.display = "none";
-        updateStatus();
-      }
-    };
-
-    function updateStatus() {
-      const availableUnits = availableDiv.children.length;
-      availableUnitsEl.textContent = availableUnits;
-
-      if (availableUnits > 10) {
-        statusIndicator.textContent = "Good";
-        statusIndicator.className = "status-good";
-      } else if (availableUnits >= 4) {
-        statusIndicator.textContent = "Warning";
-        statusIndicator.className = "status-warning";
-      } else {
-        statusIndicator.textContent = "Critical";
-        statusIndicator.className = "status-critical";
-      }
+      availableDiv.appendChild(selectedUnit);
+      contextMenu.style.display = "none";
+      updateStatus();
     }
+  };
 
-    async function init() {
-      let trucks = await loadTruckData();
-      const dispatched = localStorage.getItem("dispatchedTruck");
-      if (dispatched) {
-        const d = JSON.parse(dispatched);
-        localStorage.removeItem("dispatchedTruck");
-        const match = trucks.find(t => t.unit === d.unit);
-        if (match) match.status = "En Route";
-        else trucks.push({ unit: d.unit, status: "En Route" });
+  // ✅ FIX: only one timer, clean before starting a new one
+  document.getElementById("logisticsBtn").onclick = () => {
+    if (selectedUnit) {
+      const oldTimer = timers.get(selectedUnit);
+      if (oldTimer) clearInterval(oldTimer);
+      selectedUnit.querySelector(".timer")?.remove();
+
+      selectedUnit.classList.remove("outofservice", "flashing");
+      selectedUnit.classList.add("logistics");
+      contextMenu.style.display = "none";
+
+      let timeLeft = 600; // 10 minutes
+      const timerEl = document.createElement("div");
+      timerEl.className = "timer";
+      selectedUnit.appendChild(timerEl);
+
+      function updateTimer() {
+        const mins = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        timerEl.textContent = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+        if (timeLeft <= 0) {
+          selectedUnit.classList.add("flashing");
+          clearInterval(timers.get(selectedUnit));
+        } else timeLeft--;
       }
-      renderUnits(trucks);
+
+      updateTimer();
+      const interval = setInterval(updateTimer, 1000);
+      timers.set(selectedUnit, interval);
     }
+  };
 
-    document.getElementById("locateBtn").onclick = () => {
-      const addr = document.getElementById("addressInput").value.trim();
-      if (addr) window.location.href = `map.html?address=${encodeURIComponent(addr)}`;
-      else alert("Please enter an address first.");
-    };
+  document.getElementById("outServiceBtn").onclick = () => {
+    if (selectedUnit) {
+      const t = timers.get(selectedUnit);
+      if (t) clearInterval(t);
+      timers.delete(selectedUnit);
 
-    init();
-  </script>
+      selectedUnit.classList.remove("logistics", "flashing");
+      selectedUnit.classList.add("outofservice");
+      selectedUnit.querySelector(".timer")?.remove();
+
+      unavailableDiv.appendChild(selectedUnit);
+      contextMenu.style.display = "none";
+      updateStatus();
+    }
+  };
+
+  function updateStatus() {
+    const availableUnits = availableDiv.children.length;
+    availableUnitsEl.textContent = availableUnits;
+
+    if (availableUnits > 10) {
+      statusIndicator.textContent = "Good";
+      statusIndicator.className = "status-good";
+    } else if (availableUnits >= 4) {
+      statusIndicator.textContent = "Warning";
+      statusIndicator.className = "status-warning";
+    } else {
+      statusIndicator.textContent = "Critical";
+      statusIndicator.className = "status-critical";
+    }
+  }
+
+  async function init() {
+    let trucks = await loadTruckData();
+    const dispatched = localStorage.getItem("dispatchedTruck");
+    if (dispatched) {
+      const d = JSON.parse(dispatched);
+      localStorage.removeItem("dispatchedTruck");
+      const match = trucks.find(t => t.unit === d.unit);
+      if (match) match.status = "En Route";
+      else trucks.push({ unit: d.unit, status: "En Route" });
+    }
+    renderUnits(trucks);
+  }
+
+  document.getElementById("locateBtn").onclick = () => {
+    const addr = document.getElementById("addressInput").value.trim();
+    if (addr)
+      window.location.href = `map.html?address=${encodeURIComponent(addr)}`;
+    else alert("Please enter an address first.");
+  };
+
+  init();
+</script>
 </body>
 </html>
