@@ -2,48 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Dispatch Map - Anderson County EMS</title>
+  <title>EMS Dispatch Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha512-sA+RlBdx6z8sH2n7mU7yOGm5wLd7+eC0R6iC8zZ6GZY1Rh+JupQSRz+O7ms65wKUc6YsN5Hf1OL7xE3+okl5mQ=="
     crossorigin=""
   />
-
   <style>
     html, body {
       height: 100%;
       margin: 0;
       font-family: Arial, sans-serif;
-      background-color: #f7f7f7;
     }
-
-    #map {
-      height: 100%;
-      width: 100%;
-    }
-
+    #map { height: 100%; width: 100%; }
     .infoBox {
       position: absolute;
-      top: 15px;
-      left: 15px;
-      background: rgba(255, 255, 255, 0.95);
-      padding: 12px 15px;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 10px 12px;
       border-radius: 8px;
       box-shadow: 0 0 6px rgba(0,0,0,0.2);
       z-index: 999;
+      width: 250px;
       font-size: 14px;
-      color: #000;
-      width: 300px;
     }
-
-    .infoBox b {
-      color: #333;
-    }
-
+    .infoBox b { color: #222; }
     button, select {
       margin-top: 6px;
       padding: 6px 10px;
@@ -53,38 +39,26 @@
       color: white;
       cursor: pointer;
       width: 100%;
-      font-size: 14px;
     }
-
-    button:hover {
-      background: #0056b3;
-    }
-
-    select {
-      background: #fff;
-      color: #000;
-      border: 1px solid #ccc;
-    }
+    button:hover { background: #0056b3; }
+    select { background: #fff; color: #000; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
   <div class="infoBox">
-    <b>Dispatch Destination:</b>
-    <div id="address" style="margin-bottom: 5px;"></div>
-
+    <b>Dispatch Address:</b>
+    <div id="address"></div>
+    <hr>
     <b>Closest Truck:</b>
-    <div id="closestTruck" style="margin-bottom: 5px;"></div>
-
+    <div id="closestTruck"></div>
     <button id="dispatchBtn" style="display:none;">Dispatch Closest Truck</button>
     <br>
-
     <select id="otherTrucks" style="display:none;"></select>
     <button id="sendInsteadBtn" style="display:none;">Send Instead</button>
   </div>
 
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha512-XQoYMqMTK8LvdlxUm05K1jz6CkUu6A9I+VhZJkAFeoQdY2Z2x4dHe+NqP7LTr2D6vEYBhk1J9IJG1D/zrjYwQw=="
@@ -92,18 +66,17 @@
   ></script>
 
   <script>
-    // --- GOOGLE SHEET LINK ---
-    const sheetURL =
-      "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
+    // --- Google Sheet data source ---
+    const sheetURL = "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
 
-    // --- MAP INITIALIZATION ---
-    const map = L.map("map").setView([34.5, -82.65], 10);
+    // --- Map setup ---
+    const map = L.map("map").setView([34.5, -82.65], 11);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
 
-    // --- HAVERSINE DISTANCE FORMULA (Miles) ---
+    // --- Haversine formula (miles) ---
     function haversine(lat1, lon1, lat2, lon2) {
       const R = 3958.8;
       const toRad = (deg) => (deg * Math.PI) / 180;
@@ -116,7 +89,7 @@
       return R * c;
     }
 
-    // --- LOAD TRUCKS FROM GOOGLE SHEET ---
+    // --- Load trucks from Google Sheets ---
     async function loadTruckData() {
       const res = await fetch(sheetURL);
       const text = await res.text();
@@ -130,13 +103,13 @@
       return rows.filter((t) => t.status === "Available" && !isNaN(t.lat) && !isNaN(t.lon));
     }
 
-    // --- MAIN FUNCTION ---
-    async function locateAddress() {
+    // --- Main map logic ---
+    async function initMap() {
       const params = new URLSearchParams(window.location.search);
       const address = params.get("address") || "Anderson, SC";
       document.getElementById("address").innerText = address;
 
-      // Geocode the call address
+      // Geocode address via OpenStreetMap
       const geoRes = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", SC")}`
       );
@@ -149,14 +122,14 @@
       const destLat = parseFloat(geoData[0].lat);
       const destLon = parseFloat(geoData[0].lon);
 
-      const destMarker = L.marker([destLat, destLon], { title: "Incident Location" }).addTo(map);
+      const destMarker = L.marker([destLat, destLon], { title: "Call Location" }).addTo(map);
       destMarker.bindPopup(`<b>${address}</b>`).openPopup();
-      map.setView([destLat, destLon], 12);
+      map.setView([destLat, destLon], 13);
 
-      // Load trucks
+      // Load available units
       const trucks = await loadTruckData();
       if (!trucks.length) {
-        alert("No available trucks found.");
+        alert("No available units found.");
         return;
       }
 
@@ -167,45 +140,42 @@
       }));
       distances.sort((a, b) => a.distance - b.distance);
 
+      // Find closest truck
       const closest = distances[0];
-
-      // --- UI DISPLAY ---
-      document.getElementById("closestTruck").innerText =
-        `${closest.unit} (${closest.distance.toFixed(1)} mi)`;
+      document.getElementById("closestTruck").innerText = `${closest.unit} (${closest.distance.toFixed(2)} mi)`;
       document.getElementById("dispatchBtn").style.display = "inline-block";
 
+      // Fill dropdown
       const select = document.getElementById("otherTrucks");
-      const sendInsteadBtn = document.getElementById("sendInsteadBtn");
-
       select.innerHTML = "";
       distances.slice(1).forEach((t) => {
         const opt = document.createElement("option");
         opt.value = t.unit;
-        opt.text = `${t.unit} - ${t.distance.toFixed(1)} mi`;
+        opt.text = `${t.unit} - ${t.distance.toFixed(2)} mi`;
         select.appendChild(opt);
       });
-
       select.style.display = "inline-block";
-      sendInsteadBtn.style.display = "inline-block";
+      document.getElementById("sendInsteadBtn").style.display = "inline-block";
 
-      // Add markers
-      distances.forEach((t, index) => {
-        const iconColor = index === 0 ? "red" : "blue";
+      // Add all markers
+      distances.forEach((t, i) => {
+        const color = i === 0 ? "red" : "blue";
         const marker = L.circleMarker([t.lat, t.lon], {
-          color: iconColor,
           radius: 8,
+          color,
+          fillColor: color,
           fillOpacity: 0.8,
         }).addTo(map);
         marker.bindPopup(`<b>${t.unit}</b><br>${t.distance.toFixed(2)} mi away`);
       });
 
-      // --- DISPATCH HANDLERS ---
+      // --- Dispatch buttons ---
       document.getElementById("dispatchBtn").onclick = () => {
         const dispatched = {
           unit: closest.unit,
           address: address,
           time: Date.now(),
-          status: "En Route"
+          status: "En Route",
         };
         localStorage.setItem("dispatchedTruck", JSON.stringify(dispatched));
         window.location.href = "index.html";
@@ -217,14 +187,14 @@
           unit: alt,
           address: address,
           time: Date.now(),
-          status: "En Route"
+          status: "En Route",
         };
         localStorage.setItem("dispatchedTruck", JSON.stringify(dispatched));
         window.location.href = "index.html";
       };
     }
 
-    locateAddress();
+    initMap();
   </script>
 </body>
 </html>
