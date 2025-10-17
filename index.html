@@ -44,29 +44,51 @@
       margin-top: 0;
     }
 
-    .top-box input {
-      width: 100%;
-      padding: 10px;
-      font-size: 1em;
+    .address-input {
+      display: flex;
+      gap: 8px;
+    }
+
+    #addressInput {
+      flex: 1;
+      padding: 6px;
+      font-size: 0.95em;
       border: 1px solid #ccc;
       border-radius: 5px;
     }
 
-    .top-box button {
-      margin-top: 10px;
-      width: 100%;
-      padding: 8px;
+    #locateBtn {
+      padding: 6px 10px;
       background: #007bff;
       color: white;
       border: none;
       border-radius: 5px;
-      font-size: 1em;
+      font-size: 0.9em;
       cursor: pointer;
+      white-space: nowrap;
     }
 
-    .top-box button:hover {
+    #locateBtn:hover {
       background: #0056b3;
     }
+
+    .system-status {
+      text-align: center;
+    }
+
+    .system-status h2 {
+      margin-bottom: 15px;
+      font-size: 1.3em;
+    }
+
+    .system-status p {
+      font-size: 1.2em;
+      margin: 10px 0;
+    }
+
+    .status-good { color: green; font-weight: bold; }
+    .status-warning { color: orange; font-weight: bold; }
+    .status-critical { color: red; font-weight: bold; }
 
     .container {
       display: flex;
@@ -102,25 +124,28 @@
       border: 1px solid #007bff;
       border-radius: 8px;
       padding: 10px;
-      width: 100px;
+      width: 110px;
       text-align: center;
       font-weight: bold;
       cursor: pointer;
       transition: background 0.3s;
       user-select: none;
+      position: relative;
     }
 
-    .unit:hover {
-      background-color: #cce0ff;
-    }
+    .unit:hover { background-color: #cce0ff; }
 
-    .logistics {
-      background-color: orange !important;
-    }
+    .logistics { background-color: orange !important; color: black; }
+    .outofservice { background-color: gray !important; color: white; }
 
-    .outofservice {
-      background-color: gray !important;
-      color: white;
+    .timer {
+      position: absolute;
+      bottom: 4px;
+      left: 0;
+      right: 0;
+      font-size: 0.8em;
+      color: #000;
+      font-weight: normal;
     }
 
     @keyframes flash {
@@ -129,9 +154,7 @@
       100% { background-color: orange; }
     }
 
-    .flashing {
-      animation: flash 1s infinite;
-    }
+    .flashing { animation: flash 1s infinite; }
 
     .context-menu {
       position: absolute;
@@ -145,7 +168,7 @@
 
     .context-menu button {
       display: block;
-      width: 150px;
+      width: 160px;
       padding: 8px;
       background: white;
       border: none;
@@ -157,33 +180,28 @@
       background: #007bff;
       color: white;
     }
-
-    .status-good { color: green; font-weight: bold; }
-    .status-warning { color: orange; font-weight: bold; }
-    .status-critical { color: red; font-weight: bold; }
   </style>
 </head>
 
 <body>
   <header>Anderson County EMS Dispatch</header>
 
-  <!-- TOP ROW -->
   <div class="top-row">
     <div class="top-box">
       <h2>Address Entry</h2>
-      <input type="text" id="addressInput" placeholder="Enter address here..." />
-      <button id="locateBtn">Locate Address</button>
+      <div class="address-input">
+        <input type="text" id="addressInput" placeholder="Enter address..." />
+        <button id="locateBtn">Locate</button>
+      </div>
     </div>
 
-    <div class="top-box">
+    <div class="top-box system-status">
       <h2>System Status</h2>
-      <p>Total Units: <span id="totalUnits">0</span></p>
       <p>Available Units: <span id="availableUnits">0</span></p>
       <p>Status: <span id="statusIndicator" class="status-good">Good</span></p>
     </div>
   </div>
 
-  <!-- MAIN BODY -->
   <div class="container">
     <div class="box">
       <h2>Available Units</h2>
@@ -197,6 +215,7 @@
   </div>
 
   <div id="contextMenu" class="context-menu">
+    <button id="availBtn">Mark Available</button>
     <button id="logisticsBtn">Move to Logistics</button>
     <button id="outServiceBtn">Mark Out of Service</button>
   </div>
@@ -207,11 +226,11 @@
 
     const availableDiv = document.getElementById("available");
     const unitsOutDiv = document.getElementById("unitsOut");
-    const totalUnitsEl = document.getElementById("totalUnits");
     const availableUnitsEl = document.getElementById("availableUnits");
     const statusIndicator = document.getElementById("statusIndicator");
     const contextMenu = document.getElementById("contextMenu");
     let selectedUnit = null;
+    const timers = new Map();
 
     async function loadTruckData() {
       const res = await fetch(sheetURL);
@@ -261,18 +280,42 @@
       if (!contextMenu.contains(e.target)) contextMenu.style.display = "none";
     });
 
+    document.getElementById("availBtn").onclick = () => {
+      if (selectedUnit) {
+        selectedUnit.classList.remove("logistics", "outofservice", "flashing");
+        selectedUnit.innerHTML = selectedUnit.textContent.split(" ")[0]; // remove timer
+        availableDiv.appendChild(selectedUnit);
+        contextMenu.style.display = "none";
+        updateStatus();
+      }
+    };
+
     document.getElementById("logisticsBtn").onclick = () => {
       if (selectedUnit) {
-        selectedUnit.classList.remove("outofservice");
+        selectedUnit.classList.remove("outofservice", "flashing");
         selectedUnit.classList.add("logistics");
         contextMenu.style.display = "none";
 
-        // start 10-minute timer
-        setTimeout(() => {
-          if (selectedUnit && selectedUnit.classList.contains("logistics")) {
+        let timeLeft = 600; // 10 minutes in seconds
+        const timerEl = document.createElement("div");
+        timerEl.className = "timer";
+        selectedUnit.appendChild(timerEl);
+
+        function updateTimer() {
+          const mins = Math.floor(timeLeft / 60);
+          const secs = timeLeft % 60;
+          timerEl.textContent = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+          if (timeLeft <= 0) {
             selectedUnit.classList.add("flashing");
+            clearInterval(timers.get(selectedUnit));
+          } else {
+            timeLeft--;
           }
-        }, 10 * 60 * 1000);
+        }
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        timers.set(selectedUnit, interval);
       }
     };
 
@@ -280,14 +323,15 @@
       if (selectedUnit) {
         selectedUnit.classList.remove("logistics", "flashing");
         selectedUnit.classList.add("outofservice");
+        const t = timers.get(selectedUnit);
+        if (t) clearInterval(t);
+        selectedUnit.querySelector(".timer")?.remove();
         contextMenu.style.display = "none";
       }
     };
 
     function updateStatus() {
-      const totalUnits = document.querySelectorAll(".unit").length;
       const availableUnits = availableDiv.children.length;
-      totalUnitsEl.textContent = totalUnits;
       availableUnitsEl.textContent = availableUnits;
 
       if (availableUnits > 10) {
