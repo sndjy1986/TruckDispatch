@@ -2,300 +2,236 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <title>EMS Unit Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EMS Dispatch Dashboard</title>
   <style>
-    :root {
-      --blue: #007bff;
-      --dark-blue: #004c99;
-      --gray-bg: #f0f2f5;
-      --card-bg: #ffffff;
-      --text: #222;
-      --border: #ccc;
-    }
-
     body {
-      margin: 0;
+      background: #1e1e2f;
+      color: white;
       font-family: Arial, sans-serif;
-      background: var(--gray-bg);
-      color: var(--text);
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      background: var(--card-bg);
-      padding: 15px 25px;
-      border-bottom: 2px solid var(--border);
-    }
-
-    header .left, header .right {
-      width: 48%;
-    }
-
-    .address-inputs input {
-      display: block;
-      width: 100%;
-      margin-bottom: 8px;
-      padding: 8px;
-      font-size: 1em;
-      border-radius: 5px;
-      border: 1px solid var(--border);
-    }
-
-    .address-inputs button {
-      background: var(--blue);
-      color: white;
-      border: none;
-      padding: 10px 15px;
-      border-radius: 5px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    .status-box {
-      background: var(--gray-bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 15px;
-      text-align: center;
-    }
-
-    .status-box h3 {
-      margin: 0 0 10px;
-    }
-
-    .status-box .level {
-      font-size: 2em;
-      font-weight: bold;
-      color: var(--dark-blue);
-    }
-
-    main {
-      display: flex;
-      gap: 15px;
-      padding: 20px;
-    }
-
-    .column {
-      flex: 1;
-      background: var(--card-bg);
-      border-radius: 10px;
-      padding: 15px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    }
-
-    .column h2 {
-      margin-top: 0;
-      border-bottom: 2px solid var(--border);
-      padding-bottom: 5px;
-    }
-
-    .units-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .unit-box {
-      width: 120px;
-      height: 90px;
-      border-radius: 8px;
-      background: var(--blue);
-      color: white;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      padding: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      align-items: center;
+      margin: 0;
+    }
+    h1 { color: #4db8ff; margin-top: 15px; }
+    #systemStatus {
+      font-weight: bold;
+      font-size: 1.2em;
+      margin: 10px;
+      padding: 5px 10px;
+      border-radius: 5px;
+    }
+    .grid {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      width: 90%;
+    }
+    .unit {
+      background: #333;
+      border-radius: 10px;
+      padding: 10px;
+      width: 110px;
+      height: 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
+      user-select: none;
       position: relative;
-      text-align: center;
     }
-
-    .unit-box.available { background: #28a745; }
-    .unit-box.enroute { background: #007bff; }
-    .unit-box.onscene { background: #fd7e14; }
-    .unit-box.destination { background: #6f42c1; }
-    .unit-box.logistics { background: #ffc107; color: #000; }
-    .unit-box.oos { background: #6c757d; }
-    .unit-box.flash { animation: flash 1s infinite alternate; }
-
-    @keyframes flash {
-      from { background: #ffc107; }
-      to { background: #ff0000; color: white; }
-    }
-
-    .timer { font-size: 1.1em; font-weight: bold; }
-
+    .unit.green { background: #2e8b57; }
+    .unit.yellow { background: #b8860b; }
+    .unit.red { background: #a52a2a; }
+    .timer { font-size: 0.8em; margin-top: 5px; }
     .context-menu {
       display: none;
       position: absolute;
-      background: white;
-      border: 1px solid #ccc;
-      border-radius: 6px;
+      background: #444;
+      border: 1px solid #888;
+      border-radius: 5px;
+      padding: 5px;
       z-index: 1000;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
-
     .context-menu button {
-      background: white;
-      border: none;
+      display: block;
       width: 100%;
+      background: none;
+      color: white;
+      border: none;
       text-align: left;
-      padding: 8px 12px;
+      padding: 5px;
       cursor: pointer;
     }
-
     .context-menu button:hover {
-      background: #f1f1f1;
+      background: #666;
     }
   </style>
 </head>
 <body>
+  <h1>Anderson County EMS</h1>
+  <div id="systemStatus">Loading system status...</div>
 
-  <header>
-    <div class="left">
-      <div class="address-inputs">
-        <input type="text" id="address" placeholder="Enter Address..." />
-        <input type="text" id="notes" placeholder="Cross Streets / Notes..." />
-        <button onclick="goToMap()">Find Closest Unit</button>
-      </div>
-    </div>
+  <h2>Available Units</h2>
+  <div id="available" class="grid"></div>
 
-    <div class="right">
-      <div class="status-box">
-        <h3>System Status</h3>
-        <div class="level">Level 8</div>
-      </div>
-    </div>
-  </header>
-
-  <main>
-    <div class="column">
-      <h2>Available Units</h2>
-      <div id="availableUnits" class="units-grid"></div>
-    </div>
-
-    <div class="column">
-      <h2>Units Out</h2>
-      <div id="activeUnits" class="units-grid"></div>
-    </div>
-  </main>
+  <h2>Units Out</h2>
+  <div id="unitsOut" class="grid"></div>
 
   <div id="contextMenu" class="context-menu">
-    <button onclick="updateStatus('En Route')">En Route</button>
-    <button onclick="updateStatus('On Scene')">On Scene</button>
-    <button onclick="updateStatus('Destination')">Destination</button>
-    <button onclick="updateStatus('At Destination')">At Destination</button>
-    <button onclick="updateStatus('Logistics')">Logistics</button>
-    <button onclick="updateStatus('Out of Service')">Out of Service</button>
-    <button onclick="updateStatus('Available')">Available</button>
+    <button data-status="En Route">En Route</button>
+    <button data-status="On Scene">On Scene</button>
+    <button data-status="En Route to Destination">En Route to Destination</button>
+    <button data-status="At Destination">At Destination</button>
+    <button data-status="Available">Available</button>
   </div>
 
   <script>
-    let activeUnits = JSON.parse(localStorage.getItem("activeTrucks") || "[]");
-    const availableTrucks = [
-      "MED-0","MED-1","MED-2","MED-3","MED-4","MED-5",
-      "MED-6","MED-7","MED-8","MED-9","MED-10","MED-11",
-      "MED-12","MED-13","MED-14","MED-15","MED-16","MED-17","MED-18","MED-19"
-    ];
+    const sheetURL =
+      "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
 
-    const activeContainer = document.getElementById("activeUnits");
-    const availableContainer = document.getElementById("availableUnits");
+    const availableDiv = document.getElementById("available");
+    const unitsOutDiv = document.getElementById("unitsOut");
+    const systemStatusDiv = document.getElementById("systemStatus");
     const contextMenu = document.getElementById("contextMenu");
-    let selectedUnit = null;
+    let activeTimers = {};
 
-    function goToMap() {
-      const address = document.getElementById("address").value.trim();
-      if (!address) return alert("Enter an address first.");
-      window.location.href = `map.html?address=${encodeURIComponent(address)}`;
+    async function loadTruckData() {
+      const res = await fetch(sheetURL);
+      const text = await res.text();
+      const json = JSON.parse(text.substr(47).slice(0, -2));
+      const rows = json.table.rows.map((r) => ({
+        unit: r.c[0]?.v || "Unknown",
+        status: r.c[1]?.v || "Unavailable",
+      }));
+      return rows;
     }
 
-    function renderUnits() {
-      activeContainer.innerHTML = "";
-      availableContainer.innerHTML = "";
+    function updateSystemStatus(count) {
+      if (count > 10) {
+        systemStatusDiv.style.background = "green";
+        systemStatusDiv.innerText = `System Status: GREEN (${count} available)`;
+      } else if (count < 4) {
+        systemStatusDiv.style.background = "red";
+        systemStatusDiv.innerText = `System Status: RED (${count} available)`;
+      } else {
+        systemStatusDiv.style.background = "goldenrod";
+        systemStatusDiv.innerText = `System Status: YELLOW (${count} available)`;
+      }
+    }
 
-      const activeNames = activeUnits.map(u => u.truck);
+    function renderUnits(trucks) {
+      availableDiv.innerHTML = "";
+      unitsOutDiv.innerHTML = "";
 
-      availableTrucks.forEach(truck => {
-        if (!activeNames.includes(truck)) {
-          const box = document.createElement("div");
-          box.className = "unit-box available";
-          box.innerHTML = `<strong>${truck}</strong><small>Available</small>`;
-          availableContainer.appendChild(box);
+      trucks.forEach((t) => {
+        const el = document.createElement("div");
+        el.className = "unit green";
+        el.innerHTML = `<b>${t.unit}</b>`;
+        el.dataset.unit = t.unit;
+        el.dataset.status = t.status;
+
+        el.oncontextmenu = (e) => {
+          e.preventDefault();
+          showContextMenu(e, t.unit);
+        };
+
+        if (t.status === "Available") availableDiv.appendChild(el);
+        else if (t.status !== "Out of Service") {
+          el.classList.remove("green");
+          el.classList.add("red");
+          const timer = document.createElement("div");
+          timer.className = "timer";
+          timer.id = `timer-${t.unit}`;
+          el.appendChild(timer);
+          unitsOutDiv.appendChild(el);
+          startTimer(t.unit);
         }
       });
 
-      activeUnits.forEach(unit => {
-        const box = document.createElement("div");
-        box.className = "unit-box " + unit.status.toLowerCase().replace(/ /g,'');
-        if (unit.status === "Logistics" && unit.elapsed >= 600) box.classList.add("flash");
-        box.innerHTML = `
-          <strong>${unit.truck}</strong>
-          <small>${unit.address || "—"}</small>
-          <div class="timer" id="timer-${unit.truck.replace(/\W/g,'')}">${formatTime(unit.elapsed || 0)}</div>
-          <small>${unit.status}</small>
-        `;
-        box.addEventListener("contextmenu", e => {
-          e.preventDefault();
-          selectedUnit = unit.truck;
-          showContextMenu(e.pageX, e.pageY);
-        });
-        activeContainer.appendChild(box);
-      });
+      updateSystemStatus(
+        trucks.filter((t) => t.status === "Available").length
+      );
     }
 
-    function showContextMenu(x, y) {
+    function showContextMenu(e, unit) {
+      contextMenu.style.left = e.pageX + "px";
+      contextMenu.style.top = e.pageY + "px";
       contextMenu.style.display = "block";
-      contextMenu.style.left = `${x}px`;
-      contextMenu.style.top = `${y}px`;
+      contextMenu.dataset.unit = unit;
     }
 
-    window.addEventListener("click", () => contextMenu.style.display = "none");
-
-    function updateStatus(newStatus) {
-      if (!selectedUnit) return;
-      const unit = activeUnits.find(u => u.truck === selectedUnit);
-      if (!unit) return;
-
-      if (newStatus === "Available") {
-        activeUnits = activeUnits.filter(u => u.truck !== selectedUnit);
-      } else {
-        unit.status = newStatus;
-        unit.lastUpdate = Date.now();
-      }
-
-      localStorage.setItem("activeTrucks", JSON.stringify(activeUnits));
-      selectedUnit = null;
-      renderUnits();
+    document.addEventListener("click", () => {
       contextMenu.style.display = "none";
+    });
+
+    contextMenu.addEventListener("click", (e) => {
+      if (e.target.tagName === "BUTTON") {
+        const newStatus = e.target.dataset.status;
+        const unit = contextMenu.dataset.unit;
+        changeStatus(unit, newStatus);
+        contextMenu.style.display = "none";
+      }
+    });
+
+    function changeStatus(unit, status) {
+      const el = document.querySelector(`[data-unit='${unit}']`);
+      if (!el) return;
+
+      if (status === "Available") {
+        clearInterval(activeTimers[unit]);
+        el.remove();
+        el.className = "unit green";
+        el.innerHTML = `<b>${unit}</b>`;
+        el.dataset.status = "Available";
+        availableDiv.appendChild(el);
+      } else {
+        el.className = "unit red";
+        el.dataset.status = status;
+        let timer = el.querySelector(".timer");
+        if (!timer) {
+          timer = document.createElement("div");
+          timer.className = "timer";
+          el.appendChild(timer);
+        }
+        startTimer(unit);
+        unitsOutDiv.appendChild(el);
+      }
+      updateSystemStatus(availableDiv.children.length);
     }
 
-    function startTimers() {
-      setInterval(() => {
-        activeUnits.forEach(unit => {
-          unit.elapsed = (unit.elapsed || 0) + 1;
-          const el = document.getElementById("timer-" + unit.truck.replace(/\W/g,''));
-          if (el) el.textContent = formatTime(unit.elapsed);
-        });
-        localStorage.setItem("activeTrucks", JSON.stringify(activeUnits));
-        renderUnits();
+    function startTimer(unit) {
+      const timerEl = document.getElementById(`timer-${unit}`) || document.querySelector(`[data-unit='${unit}'] .timer`);
+      const startTime = Date.now();
+      activeTimers[unit] = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        timerEl.innerText = `${mins}:${secs.toString().padStart(2, "0")}`;
       }, 1000);
     }
 
-    function formatTime(sec) {
-      const h = Math.floor(sec / 3600);
-      const m = Math.floor((sec % 3600) / 60);
-      const s = sec % 60;
-      return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+    async function init() {
+      let trucks = await loadTruckData();
+
+      // If dispatchedTruck exists (from map.html)
+      const dispatched = localStorage.getItem("dispatchedTruck");
+      if (dispatched) {
+        const d = JSON.parse(dispatched);
+        localStorage.removeItem("dispatchedTruck");
+
+        const found = trucks.find((t) => t.unit === d.unit);
+        if (found) found.status = d.status;
+        else trucks.push({ unit: d.unit, status: d.status });
+      }
+
+      renderUnits(trucks);
     }
 
-    renderUnits();
-    startTimers();
+    init();
   </script>
-
 </body>
 </html>
