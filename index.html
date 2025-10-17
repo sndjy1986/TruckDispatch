@@ -97,6 +97,10 @@
       flex-wrap: wrap;
     }
 
+    .bottom-row {
+      padding: 0 20px 20px 20px;
+    }
+
     .box {
       background: white;
       border: 2px solid #007bff;
@@ -214,6 +218,13 @@
     </div>
   </div>
 
+  <div class="bottom-row">
+    <div class="box" style="width: 100%;">
+      <h2>Unavailable Units</h2>
+      <div id="unavailable" class="grid"></div>
+    </div>
+  </div>
+
   <div id="contextMenu" class="context-menu">
     <button id="availBtn">Mark Available</button>
     <button id="logisticsBtn">Move to Logistics</button>
@@ -226,6 +237,7 @@
 
     const availableDiv = document.getElementById("available");
     const unitsOutDiv = document.getElementById("unitsOut");
+    const unavailableDiv = document.getElementById("unavailable");
     const availableUnitsEl = document.getElementById("availableUnits");
     const statusIndicator = document.getElementById("statusIndicator");
     const contextMenu = document.getElementById("contextMenu");
@@ -246,6 +258,7 @@
     function renderUnits(trucks) {
       availableDiv.innerHTML = "";
       unitsOutDiv.innerHTML = "";
+      unavailableDiv.innerHTML = "";
 
       trucks.forEach(t => {
         const el = document.createElement("div");
@@ -270,6 +283,7 @@
         };
 
         if (t.status === "Available") availableDiv.appendChild(el);
+        else if (t.status === "Out of Service") unavailableDiv.appendChild(el);
         else unitsOutDiv.appendChild(el);
       });
 
@@ -283,7 +297,7 @@
     document.getElementById("availBtn").onclick = () => {
       if (selectedUnit) {
         selectedUnit.classList.remove("logistics", "outofservice", "flashing");
-        selectedUnit.innerHTML = selectedUnit.textContent.split(" ")[0]; // remove timer
+        selectedUnit.querySelector(".timer")?.remove();
         availableDiv.appendChild(selectedUnit);
         contextMenu.style.display = "none";
         updateStatus();
@@ -323,10 +337,12 @@
       if (selectedUnit) {
         selectedUnit.classList.remove("logistics", "flashing");
         selectedUnit.classList.add("outofservice");
+        selectedUnit.querySelector(".timer")?.remove();
+        unavailableDiv.appendChild(selectedUnit);
         const t = timers.get(selectedUnit);
         if (t) clearInterval(t);
-        selectedUnit.querySelector(".timer")?.remove();
         contextMenu.style.display = "none";
+        updateStatus();
       }
     };
 
