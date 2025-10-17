@@ -2,176 +2,89 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Anderson County EMS Dispatch</title>
+  <title>EMS Dispatch Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+  />
   <style>
-    body {
-      background-color: #f0f4f8;
-      color: #000;
-      font-family: Arial, sans-serif;
+    html, body {
+      height: 100%;
       margin: 0;
-      padding: 0;
+      font-family: Arial, sans-serif;
     }
+    #map { height: 100%; width: 100%; }
 
-    header {
-      background-color: #007bff;
-      color: white;
-      padding: 10px 0;
-      text-align: center;
-      font-size: 1.5em;
+    .infoBox {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 10px 12px;
+      border-radius: 8px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.2);
+      z-index: 999;
+      width: 260px;
+      font-size: 14px;
     }
-
-    .top-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      padding: 20px;
-      flex-wrap: wrap;
-    }
-
-    .top-box {
-      background: white;
-      border: 2px solid #007bff;
-      border-radius: 10px;
-      padding: 15px;
-      width: 48%;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-
-    .top-box h2 {
-      color: #007bff;
-      text-align: center;
-      margin-top: 0;
-    }
-
-    .top-box input {
-      width: 100%;
-      padding: 10px;
-      font-size: 1em;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-
-    .top-box button {
-      margin-top: 10px;
-      width: 100%;
-      padding: 8px;
-      background: #007bff;
-      color: white;
+    .infoBox b { color: #222; }
+    button, select {
+      margin-top: 6px;
+      padding: 6px 10px;
       border: none;
       border-radius: 5px;
-      font-size: 1em;
+      background: #007bff;
+      color: white;
       cursor: pointer;
+      width: 100%;
     }
-
-    .top-box button:hover {
-      background: #0056b3;
-    }
-
-    .container {
-      display: flex;
-      justify-content: space-between;
-      padding: 20px;
-      flex-wrap: wrap;
-    }
-
-    .box {
-      background: white;
-      border: 2px solid #007bff;
-      border-radius: 10px;
-      padding: 15px;
-      width: 48%;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-
-    .box h2 {
-      text-align: center;
-      color: #007bff;
-      margin-top: 0;
-    }
-
-    .grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: center;
-    }
-
-    .unit {
-      background-color: #e6f0ff;
-      border: 1px solid #007bff;
-      border-radius: 8px;
-      padding: 10px;
-      width: 100px;
-      text-align: center;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background 0.3s;
-    }
-
-    .unit:hover {
-      background-color: #cce0ff;
-    }
-
-    .status-good {
-      color: green;
-      font-weight: bold;
-    }
-
-    .status-warning {
-      color: orange;
-      font-weight: bold;
-    }
-
-    .status-critical {
-      color: red;
-      font-weight: bold;
-    }
+    button:hover { background: #0056b3; }
+    select { background: #fff; color: #000; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
-  <header>Anderson County EMS Dispatch</header>
-
-  <!-- TOP ROW -->
-  <div class="top-row">
-    <!-- Address Box -->
-    <div class="top-box" id="addressBox">
-      <h2>Address Entry</h2>
-      <input type="text" id="addressInput" placeholder="Enter address here...">
-      <button id="locateBtn">Locate Address</button>
-    </div>
-
-    <!-- System Status -->
-    <div class="top-box" id="systemStatusBox">
-      <h2>System Status</h2>
-      <p>Total Units: <span id="totalUnits">0</span></p>
-      <p>Available Units: <span id="availableUnits">0</span></p>
-      <p>Status: <span id="statusIndicator" class="status-good">Good</span></p>
-    </div>
+  <div class="infoBox">
+    <b>Dispatch Address:</b>
+    <div id="address"></div>
+    <hr>
+    <b>Closest Truck:</b>
+    <div id="closestTruck"></div>
+    <button id="dispatchBtn" style="display:none;">Dispatch Closest Truck</button>
+    <br>
+    <select id="otherTrucks" style="display:none;"></select>
+    <button id="sendInsteadBtn" style="display:none;">Send Instead</button>
   </div>
 
-  <!-- MAIN UNIT DISPLAY -->
-  <div class="container">
-    <div class="box">
-      <h2>Available Units</h2>
-      <div id="available" class="grid"></div>
-    </div>
+  <div id="map"></div>
 
-    <div class="box">
-      <h2>Units Out</h2>
-      <div id="unitsOut" class="grid"></div>
-    </div>
-  </div>
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    crossorigin=""
+  ></script>
 
   <script>
     const sheetURL =
       "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
 
-    const availableDiv = document.getElementById("available");
-    const unitsOutDiv = document.getElementById("unitsOut");
-    const totalUnitsEl = document.getElementById("totalUnits");
-    const availableUnitsEl = document.getElementById("availableUnits");
-    const statusIndicator = document.getElementById("statusIndicator");
+    const map = L.map("map").setView([34.5, -82.65], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 3958.8;
+      const toRad = (deg) => (deg * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
 
     async function loadTruckData() {
       const res = await fetch(sheetURL);
@@ -179,89 +92,98 @@
       const json = JSON.parse(text.substr(47).slice(0, -2));
       const rows = json.table.rows.map(r => ({
         unit: r.c[0]?.v || "Unknown",
-        status: r.c[1]?.v || "Unavailable"
+        status: r.c[1]?.v || "Unavailable",
+        lat: parseFloat(r.c[2]?.v),
+        lon: parseFloat(r.c[3]?.v),
       }));
-      return rows;
+      return rows.filter(t => t.status === "Available" && !isNaN(t.lat) && !isNaN(t.lon));
     }
 
-    function renderUnits(trucks) {
-      availableDiv.innerHTML = "";
-      unitsOutDiv.innerHTML = "";
+    async function initMap() {
+      const params = new URLSearchParams(window.location.search);
+      const address = params.get("address") || "Anderson, SC";
+      document.getElementById("address").innerText = address;
 
-      trucks.forEach(t => {
-        const el = document.createElement("div");
-        el.className = "unit";
-        el.textContent = t.unit;
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", SC")}`
+      );
+      const geoData = await geoRes.json();
+      if (!geoData[0]) {
+        alert("Address not found!");
+        return;
+      }
 
-        el.onclick = () => {
-          if (el.parentElement.id === "available") {
-            unitsOutDiv.appendChild(el);
-            updateStatus();
-          } else {
-            availableDiv.appendChild(el);
-            updateStatus();
-          }
-        };
+      const destLat = parseFloat(geoData[0].lat);
+      const destLon = parseFloat(geoData[0].lon);
 
-        if (t.status === "Available") {
-          availableDiv.appendChild(el);
-        } else {
-          unitsOutDiv.appendChild(el);
-        }
+      const destMarker = L.marker([destLat, destLon], { title: "Call Location" }).addTo(map);
+      destMarker.bindPopup(`<b>${address}</b>`).openPopup();
+      map.setView([destLat, destLon], 13);
+
+      const trucks = await loadTruckData();
+      if (!trucks.length) {
+        alert("No available units found.");
+        return;
+      }
+
+      const distances = trucks.map(t => ({
+        ...t,
+        distance: haversine(destLat, destLon, t.lat, t.lon),
+      }));
+      distances.sort((a, b) => a.distance - b.distance);
+
+      const closest = distances[0];
+      document.getElementById("closestTruck").innerText =
+        `${closest.unit} (${closest.distance.toFixed(2)} mi)`;
+      document.getElementById("dispatchBtn").style.display = "inline-block";
+
+      const select = document.getElementById("otherTrucks");
+      select.innerHTML = "";
+      distances.slice(1).forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t.unit;
+        opt.text = `${t.unit} - ${t.distance.toFixed(2)} mi`;
+        select.appendChild(opt);
+      });
+      select.style.display = "inline-block";
+      document.getElementById("sendInsteadBtn").style.display = "inline-block";
+
+      distances.forEach((t, i) => {
+        const color = i === 0 ? "red" : "blue";
+        const marker = L.circleMarker([t.lat, t.lon], {
+          radius: 8,
+          color,
+          fillColor: color,
+          fillOpacity: 0.8,
+        }).addTo(map);
+        marker.bindPopup(`<b>${t.unit}</b><br>${t.distance.toFixed(2)} mi away`);
       });
 
-      updateStatus();
+      document.getElementById("dispatchBtn").onclick = () => {
+        const dispatched = {
+          unit: closest.unit,
+          address: address,
+          time: Date.now(),
+          status: "En Route",
+        };
+        localStorage.setItem("dispatchedTruck", JSON.stringify(dispatched));
+        window.location.href = "index.html";
+      };
+
+      document.getElementById("sendInsteadBtn").onclick = () => {
+        const alt = select.value;
+        const dispatched = {
+          unit: alt,
+          address: address,
+          time: Date.now(),
+          status: "En Route",
+        };
+        localStorage.setItem("dispatchedTruck", JSON.stringify(dispatched));
+        window.location.href = "index.html";
+      };
     }
 
-    function updateStatus() {
-      const totalUnits = document.querySelectorAll(".unit").length;
-      const availableUnits = document.getElementById("available").children.length;
-
-      totalUnitsEl.textContent = totalUnits;
-      availableUnitsEl.textContent = availableUnits;
-
-      if (availableUnits > 10) {
-        statusIndicator.textContent = "Good";
-        statusIndicator.className = "status-good";
-      } else if (availableUnits >= 4 && availableUnits <= 10) {
-        statusIndicator.textContent = "Warning";
-        statusIndicator.className = "status-warning";
-      } else {
-        statusIndicator.textContent = "Critical";
-        statusIndicator.className = "status-critical";
-      }
-    }
-
-    async function init() {
-      let trucks = await loadTruckData();
-
-      const dispatched = localStorage.getItem("dispatchedTruck");
-      if (dispatched) {
-        const d = JSON.parse(dispatched);
-        localStorage.removeItem("dispatchedTruck");
-
-        const match = trucks.find(t => t.unit === d.unit);
-        if (match) {
-          match.status = "En Route";
-        } else {
-          trucks.push({ unit: d.unit, status: "En Route" });
-        }
-      }
-
-      renderUnits(trucks);
-    }
-
-    // Address Box: Redirect to Map
-    document.getElementById("locateBtn").onclick = () => {
-      const addr = document.getElementById("addressInput").value.trim();
-      if (addr) {
-        window.location.href = `map.html?address=${encodeURIComponent(addr)}`;
-      } else {
-        alert("Please enter an address first.");
-      }
-    };
-
-    init();
+    initMap();
   </script>
 </body>
 </html>
