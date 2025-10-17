@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Anderson County EMS Dispatch</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
       background-color: #f0f4f8;
@@ -35,7 +35,7 @@
       border-radius: 10px;
       padding: 15px;
       width: 48%;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     }
 
     .top-box h2 {
@@ -81,7 +81,7 @@
       border-radius: 10px;
       padding: 15px;
       width: 48%;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     }
 
     .box h2 {
@@ -107,42 +107,75 @@
       font-weight: bold;
       cursor: pointer;
       transition: background 0.3s;
+      user-select: none;
     }
 
     .unit:hover {
       background-color: #cce0ff;
     }
 
-    .status-good {
-      color: green;
-      font-weight: bold;
+    .logistics {
+      background-color: orange !important;
     }
 
-    .status-warning {
-      color: orange;
-      font-weight: bold;
+    .outofservice {
+      background-color: gray !important;
+      color: white;
     }
 
-    .status-critical {
-      color: red;
-      font-weight: bold;
+    @keyframes flash {
+      0% { background-color: orange; }
+      50% { background-color: red; }
+      100% { background-color: orange; }
     }
+
+    .flashing {
+      animation: flash 1s infinite;
+    }
+
+    .context-menu {
+      position: absolute;
+      display: none;
+      background: white;
+      border: 1px solid #007bff;
+      border-radius: 5px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+    }
+
+    .context-menu button {
+      display: block;
+      width: 150px;
+      padding: 8px;
+      background: white;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .context-menu button:hover {
+      background: #007bff;
+      color: white;
+    }
+
+    .status-good { color: green; font-weight: bold; }
+    .status-warning { color: orange; font-weight: bold; }
+    .status-critical { color: red; font-weight: bold; }
   </style>
 </head>
+
 <body>
   <header>Anderson County EMS Dispatch</header>
 
   <!-- TOP ROW -->
   <div class="top-row">
-    <!-- Address Box -->
-    <div class="top-box" id="addressBox">
+    <div class="top-box">
       <h2>Address Entry</h2>
-      <input type="text" id="addressInput" placeholder="Enter address here...">
+      <input type="text" id="addressInput" placeholder="Enter address here..." />
       <button id="locateBtn">Locate Address</button>
     </div>
 
-    <!-- System Status -->
-    <div class="top-box" id="systemStatusBox">
+    <div class="top-box">
       <h2>System Status</h2>
       <p>Total Units: <span id="totalUnits">0</span></p>
       <p>Available Units: <span id="availableUnits">0</span></p>
@@ -150,7 +183,7 @@
     </div>
   </div>
 
-  <!-- MAIN UNIT DISPLAY -->
+  <!-- MAIN BODY -->
   <div class="container">
     <div class="box">
       <h2>Available Units</h2>
@@ -163,6 +196,11 @@
     </div>
   </div>
 
+  <div id="contextMenu" class="context-menu">
+    <button id="logisticsBtn">Move to Logistics</button>
+    <button id="outServiceBtn">Mark Out of Service</button>
+  </div>
+
   <script>
     const sheetURL =
       "https://docs.google.com/spreadsheets/d/1bV1uBrj3hOv55qhoLAuXHGFUaP92_bYPA9HhypyTXs0/gviz/tq?tqx=out:json";
@@ -172,6 +210,8 @@
     const totalUnitsEl = document.getElementById("totalUnits");
     const availableUnitsEl = document.getElementById("availableUnits");
     const statusIndicator = document.getElementById("statusIndicator");
+    const contextMenu = document.getElementById("contextMenu");
+    let selectedUnit = null;
 
     async function loadTruckData() {
       const res = await fetch(sheetURL);
@@ -196,34 +236,64 @@
         el.onclick = () => {
           if (el.parentElement.id === "available") {
             unitsOutDiv.appendChild(el);
-            updateStatus();
           } else {
             availableDiv.appendChild(el);
-            updateStatus();
           }
+          updateStatus();
         };
 
-        if (t.status === "Available") {
-          availableDiv.appendChild(el);
-        } else {
-          unitsOutDiv.appendChild(el);
-        }
+        el.oncontextmenu = (e) => {
+          e.preventDefault();
+          selectedUnit = el;
+          contextMenu.style.display = "block";
+          contextMenu.style.left = e.pageX + "px";
+          contextMenu.style.top = e.pageY + "px";
+        };
+
+        if (t.status === "Available") availableDiv.appendChild(el);
+        else unitsOutDiv.appendChild(el);
       });
 
       updateStatus();
     }
 
+    document.addEventListener("click", (e) => {
+      if (!contextMenu.contains(e.target)) contextMenu.style.display = "none";
+    });
+
+    document.getElementById("logisticsBtn").onclick = () => {
+      if (selectedUnit) {
+        selectedUnit.classList.remove("outofservice");
+        selectedUnit.classList.add("logistics");
+        contextMenu.style.display = "none";
+
+        // start 10-minute timer
+        setTimeout(() => {
+          if (selectedUnit && selectedUnit.classList.contains("logistics")) {
+            selectedUnit.classList.add("flashing");
+          }
+        }, 10 * 60 * 1000);
+      }
+    };
+
+    document.getElementById("outServiceBtn").onclick = () => {
+      if (selectedUnit) {
+        selectedUnit.classList.remove("logistics", "flashing");
+        selectedUnit.classList.add("outofservice");
+        contextMenu.style.display = "none";
+      }
+    };
+
     function updateStatus() {
       const totalUnits = document.querySelectorAll(".unit").length;
-      const availableUnits = document.getElementById("available").children.length;
-
+      const availableUnits = availableDiv.children.length;
       totalUnitsEl.textContent = totalUnits;
       availableUnitsEl.textContent = availableUnits;
 
       if (availableUnits > 10) {
         statusIndicator.textContent = "Good";
         statusIndicator.className = "status-good";
-      } else if (availableUnits >= 4 && availableUnits <= 10) {
+      } else if (availableUnits >= 4) {
         statusIndicator.textContent = "Warning";
         statusIndicator.className = "status-warning";
       } else {
@@ -234,31 +304,21 @@
 
     async function init() {
       let trucks = await loadTruckData();
-
       const dispatched = localStorage.getItem("dispatchedTruck");
       if (dispatched) {
         const d = JSON.parse(dispatched);
         localStorage.removeItem("dispatchedTruck");
-
         const match = trucks.find(t => t.unit === d.unit);
-        if (match) {
-          match.status = "En Route";
-        } else {
-          trucks.push({ unit: d.unit, status: "En Route" });
-        }
+        if (match) match.status = "En Route";
+        else trucks.push({ unit: d.unit, status: "En Route" });
       }
-
       renderUnits(trucks);
     }
 
-    // Address Box: Redirect to Map
     document.getElementById("locateBtn").onclick = () => {
       const addr = document.getElementById("addressInput").value.trim();
-      if (addr) {
-        window.location.href = `map.html?address=${encodeURIComponent(addr)}`;
-      } else {
-        alert("Please enter an address first.");
-      }
+      if (addr) window.location.href = `map.html?address=${encodeURIComponent(addr)}`;
+      else alert("Please enter an address first.");
     };
 
     init();
